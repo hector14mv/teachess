@@ -151,7 +151,8 @@ chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
 ## Tests
 
 `.venv/bin/python tests/test_watch.py` runs the watcher's scenarios (daylight saving time, several games between
-checks, one stop per streak, failed notifications, a corrupt state file, two watchers at once) on synthetic games.
+checks, one stop per streak, failed notifications, a corrupt state file, two watchers at once) on synthetic games;
+`tests/test_drills.py` covers the plan-aware deck (illegal plan moves, plan changes, cramped positions).
 
 ## Limits
 

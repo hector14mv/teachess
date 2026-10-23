@@ -31,9 +31,12 @@ BIN = core.ROOT / "bin" / "teachess"
 
 
 def load_state() -> dict:
+    """The saved state, or {} (start over from now) when it is missing, cut short or not what we wrote."""
     try:
-        return json.loads(STATE.read_text())
-    except (OSError, ValueError):  # missing or cut short: start over from now
+        state = json.loads(STATE.read_text())
+        datetime.fromisoformat(state["last_end"])
+        return state if isinstance(state.get("streak"), (str, type(None))) else {}
+    except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return {}
 
 
@@ -57,7 +60,7 @@ def check(live: bool = True, at: datetime | None = None, send=notify.send) -> li
     """Sync, then tell about each rapid game not told yet and about a losing streak once per streak.
 
     Only one check runs at a time (the service and a foreground watcher share the state), and the state moves
-    on only after the notifications went out, so a crash repeats a notification rather than losing it."""
+    on only after the notifications went out, so a crash or a channel that is down repeats a notification rather than losing it."""
     core.DATA.mkdir(exist_ok=True)
     with open(LOCK, "w") as lock:
         try:
@@ -84,10 +87,7 @@ def _check(at: datetime, send) -> list[dict]:
     new = [g for g in rapid if core.end_dt(g) > last
            and (at - core.end_dt(g)).total_seconds() < FRESH_HOURS * 3600]
     due = drills.queue(report)[1]["due"]
-    events = [lesson(g, evals, report, due) for g in new[-3:]]
-    if len(new) > 3:
-        events.insert(0, {"type": "more", "title": f"{len(new) - 3} partidas más desde el último aviso",
-                          "body": "Míralas con teachess games.", "url": None})
+    events = [lesson(g, evals, report, due) for g in new]
 
     t = core.today(games, report, at=at)
     streak_start = None
@@ -97,8 +97,8 @@ def _check(at: datetime, send) -> list[dict]:
             events.append({"type": "stop", "title": f"Llevas {t['losses_in_a_row']} derrotas seguidas. Para aquí.",
                            "body": f"{t['advice']} Mientras, repasa tus tarjetas: teachess drill.", "url": None})
 
-    for e in events:
-        send(e["title"], e["body"], e["url"])
+    if not all([send(e["title"], e["body"], e["url"]) for e in events]):
+        return events  # nobody was reached: keep the state so the next check tries again
     if rapid and core.end_dt(rapid[-1]) > last:
         state["last_end"] = rapid[-1]["end"]
     if streak_start:

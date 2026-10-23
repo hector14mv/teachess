@@ -188,7 +188,7 @@ def drill_loop(args) -> None:
     due, stats = drills.queue()
     if not due:
         return print(f"Nada pendiente hoy. {stats['learned']} de {stats['total']} tarjetas aprendidas.")
-    print(dim(f"{stats['due']} tarjetas para hoy de {stats['total']}. Escribe 1, 2 o 3; q para salir.\n"))
+    print(dim(f"{stats['due']} tarjetas para hoy de {stats['total']}. Escribe el número de la jugada; q para salir.\n"))
     for card in due[:args.limit]:
         c = drills.present(card)
         board = chess.Board(c["fen"])
@@ -200,9 +200,10 @@ def drill_loop(args) -> None:
         print(f"\n{c['line']} — {bold(c['ask'])}")
         for i, ch in enumerate(c["choices"], 1):
             print(f"  {i}. {ch['label']}")
+        valid = [str(i) for i in range(1, len(c["choices"]) + 1)]
         pick = input("> ").strip().lower()
-        while pick not in ("1", "2", "3", "q"):
-            pick = input("1, 2, 3 o q > ").strip().lower()
+        while pick not in (*valid, "q"):
+            pick = input(f"{', '.join(valid)} o q > ").strip().lower()
         if pick == "q":
             break
         res = drills.answer(card, c["choices"][int(pick) - 1]["san"])

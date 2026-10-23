@@ -26,7 +26,7 @@ def game(t, score):
 
 def run(at):
     sent = []
-    ev = watch.check(live=False, at=at, send=lambda t, b, u: sent.append(t))
+    ev = watch.check(live=False, at=at, send=lambda t, b, u: sent.append(t) or True)
     return [e["type"] for e in ev], len(sent)
 
 ok = True
@@ -52,7 +52,7 @@ expect("no repeat after DST", run(b + timedelta(minutes=4)), ([], 0))
 base = b + timedelta(minutes=10)
 for i in range(5):
     GAMES.append(game(base + timedelta(minutes=i * 12), 1))
-expect("five new games", run(base + timedelta(minutes=60)), (["more", "game", "game", "game"], 4))
+expect("five new games, five lessons", run(base + timedelta(minutes=60)), (["game"] * 5, 5))
 
 # 4: one stop per streak, even at the 3rd and 4th defeat
 s0 = base + timedelta(minutes=70)
@@ -72,11 +72,14 @@ try:
 except RuntimeError:
     pass
 expect("state untouched after failed send", watch.STATE.read_text() == before, True)
+watch.check(live=False, at=s0 + timedelta(minutes=123), send=lambda *a: False)  # every channel down
+expect("state untouched when nobody was reached", watch.STATE.read_text() == before, True)
 expect("retried next check", run(s0 + timedelta(minutes=124)), (["game"], 1))
 
 # 6: truncated state file -> start over, no crash
-watch.STATE.write_text('{"last_en')
-expect("corrupt state reinit", run(s0 + timedelta(minutes=126)), ([], 0))
+for bad in ('{"last_en', "null", "[]", '{"last_end": "broken"}', '{"last_end": 5}'):
+    watch.STATE.write_text(bad)
+    expect(f"bad state {bad} reinit", run(s0 + timedelta(minutes=126)), ([], 0))
 
 # 7: a second check while one holds the lock returns nothing
 import fcntl

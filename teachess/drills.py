@@ -18,7 +18,7 @@ from . import core
 
 STATE = core.DATA / "drill_state.json"
 INTERVALS = {1: 1, 2: 3, 3: 7, 4: 14, 5: 30}  # box -> days until the card comes back
-_choices_cache: dict[str, list[str]] = {}
+_choices_cache: dict[str, list[str]] = {}  # card id|answer -> choices
 
 
 def card_id(d: dict) -> str:
@@ -42,6 +42,14 @@ def plan() -> dict:
     return {k: a for k, a in core.config.load().get("advice", {}).items() if a.get("move")}
 
 
+def legal(fen: str, san: str) -> bool:
+    try:
+        chess.Board(fen).parse_san(san)
+        return True
+    except ValueError:
+        return False
+
+
 def deck(report: dict | None = None) -> list[dict]:
     """The repeated mistakes as cards, bent to the plan: a move the plan keeps is not drilled, and where the
     plan picks another move than Stockfish, the card asks for the plan's move."""
@@ -50,6 +58,8 @@ def deck(report: dict | None = None) -> list[dict]:
     cards = []
     for d in report.get("drills", []):
         a = chosen.get(f"{d['color']}|{' '.join(d['line'])}")
+        if a and not legal(d["fen"], a["move"]):
+            a = None  # a typo in the plan must not break the deck: drill Stockfish's move there
         if a and d["played"] == a["move"]:
             continue
         card = {**d, "id": card_id(d)}
@@ -73,8 +83,10 @@ def queue(report: dict | None = None, today: date | None = None) -> tuple[list[d
 
 def choices(card: dict) -> list[str]:
     """The best move, the move the player keeps playing and one more engine candidate, shuffled."""
-    if card["id"] in _choices_cache:
-        return _choices_cache[card["id"]]
+    # Keyed by the answer too: changing the plan changes the right move of a card that keeps its id
+    cache_key = f"{card['id']}|{card['best']}|{card.get('engine_best')}"
+    if cache_key in _choices_cache:
+        return _choices_cache[cache_key]
     board = chess.Board(card["fen"])
     picks = [card["best"], card["played"]]
     path = shutil.which("stockfish")
@@ -90,10 +102,13 @@ def choices(card: dict) -> list[str]:
         finally:
             engine.quit()
     if len(picks) < 3:
-        picks.append(next(board.san(m) for m in board.legal_moves
-                          if board.san(m) not in picks and board.san(m) != card.get("engine_best")))
+        # Fewer than three moves to offer (a cramped position) is fine: the card shows two
+        extra = next((board.san(m) for m in board.legal_moves
+                      if board.san(m) not in picks and board.san(m) != card.get("engine_best")), None)
+        if extra:
+            picks.append(extra)
     random.Random(card["id"]).shuffle(picks)
-    _choices_cache[card["id"]] = picks
+    _choices_cache[cache_key] = picks
     return picks
 
 

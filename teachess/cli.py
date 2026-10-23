@@ -239,6 +239,29 @@ def cmd_coach(args) -> None:
     coach.launch(folder["dir"], " ".join(args.prompt), launch=not args.no_launch)
 
 
+def cmd_watch(args) -> None:
+    from . import watch
+    if args.action:
+        result = {"install": watch.install, "uninstall": watch.uninstall, "status": watch.status}[args.action]()
+        if args.json:
+            return emit(result)
+        if args.action == "status":
+            print(f"Servicio: {'en marcha' if result['running'] else 'instalado pero parado' if result['installed'] else 'sin instalar'}")
+            for line in result["log"]:
+                print(dim(f"  {line}"))
+            return
+        texts = {"created": "instalado", "updated": "actualizado", "unchanged": "ya estaba instalado",
+                 "removed": "desinstalado", "absent": "no estaba instalado"}
+        print(f"Servicio de avisos {texts[result['status']]}: {result['plist']}")
+        if args.action == "install":
+            print(dim("Revisa chess.com cada 2 minutos aunque el panel esté cerrado. Registro: " + result["log"]))
+        return
+    if args.once or args.at:
+        events = watch.check(live=not args.offline, at=args.at, send=(lambda *_: None) if args.json else watch.notify.send)
+        return emit(events) if args.json else None
+    watch.loop(live=not args.offline)
+
+
 def cmd_mcp(args) -> None:
     from . import mcp
     if not args.action:
@@ -317,6 +340,11 @@ def build_parser() -> Parser:
     sp.add_argument("--no-open", action="store_true", help="no abrir el navegador")
     sp.add_argument("--offline", action="store_true", help="no consultar chess.com")
     sp.add_argument("--at", type=parse_at, help="revive un momento pasado, p. ej. 2026-10-15T02:47 (sin conexión)")
+    sp = add("watch", "te avisa al acabar cada partida y cuando toca parar; «install» lo deja de fondo", cmd_watch)
+    sp.add_argument("action", nargs="?", choices=["install", "uninstall", "status"])
+    sp.add_argument("--once", action="store_true", help="una sola revisión y sale (lo que ejecuta el servicio)")
+    sp.add_argument("--offline", action="store_true", help="no consultar chess.com")
+    sp.add_argument("--at", type=parse_at, help="revive un momento pasado, p. ej. 2026-10-15T02:47 (una revisión)")
     sp = add("skill", "la guía de teachess para agentes; «install» la instala en Claude Code", cmd_skill)
     sp.add_argument("action", nargs="?", choices=["install"])
     sp.add_argument("--dir", help="carpeta de skills (por defecto ~/.claude/skills)")

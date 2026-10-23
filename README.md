@@ -29,6 +29,7 @@ around them:
 | `teachess progress` | Month by month: rating, points, and how early your first serious mistake comes |
 | `teachess drill` | Spaced-repetition flashcards of your repeated mistakes, in the terminal |
 | `teachess sync` | Fetches new games, evaluates them and rebuilds the report |
+| `teachess watch install` | A background service that notifies you when a game ends (its first mistake) and when to stop |
 | `teachess coach` | Creates your coach folder and opens Claude Code in it (see below) |
 | `teachess skill install` | Teaches every Claude Code session how to use teachess |
 | `teachess mcp install claude-code\|claude-desktop` | Registers teachess as an MCP server, so Claude can call it as tools |
@@ -48,6 +49,17 @@ $ teachess today --json
 
 Exit codes are stable: `0` ok, `2` bad arguments, `3` setup missing (no username, no data yet), `4` game or card not
 found, `5` chess.com unreachable or rate-limiting. With `--json`, stderr carries `{"error": {"code", "exit", "message"}}`.
+
+## After every game
+
+`teachess watch install` adds a macOS background service (a LaunchAgent running `teachess watch --once` every two
+minutes) that checks chess.com even with the dashboard closed. When a rapid game ends you get a notification
+with its lesson: "Error on move 4.Bc4, the same one as in 11 games; the right move was 4.d4. It is in your cards."
+After two defeats in a row it tells you to stop for 45 minutes and review your cards instead. To get the same
+notifications on your phone, install [ntfy](https://ntfy.sh), subscribe to a topic only you know and add
+`"notify": {"ntfy": "https://ntfy.sh/<topic>"}` to `config.json`; a tap opens the game. `teachess watch status`
+shows the service and its log; `teachess watch uninstall` removes it. `teachess watch` runs the same loop in the
+foreground.
 
 ## Talk to Claude about your games
 

@@ -1,5 +1,6 @@
 {
   "user": "your_chesscom_username",
+  "notify": {"ntfy": "https://ntfy.sh/pick-a-topic-only-you-know"},
   "advice": {
     "white|e4 e5 Nf3 Nc6": {"move": "d4", "text": "Play 3.d4 (Scotch) every time: one line to master."},
     "black|d4": {"text": "Free text shown in the Repertoire tab when this line is open."}

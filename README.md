@@ -26,8 +26,12 @@ around them:
 | `teachess games` | Your games (`--since 30d`, `--tc rapid\|blitz\|bullet\|daily\|all`) |
 | `teachess openings` | Your openings with the share of points and how often you go wrong before move 12 |
 | `teachess review [url\|last]` | Stockfish over one game: every costly move and what you should have played |
+| `teachess progress` | Month by month: rating, points, and how early your first serious mistake comes |
 | `teachess drill` | Spaced-repetition flashcards of your repeated mistakes, in the terminal |
 | `teachess sync` | Fetches new games, evaluates them and rebuilds the report |
+| `teachess coach` | Creates your coach folder and opens Claude Code in it (see below) |
+| `teachess skill install` | Teaches every Claude Code session how to use teachess |
+| `teachess mcp install claude-code\|claude-desktop` | Registers teachess as an MCP server, so Claude can call it as tools |
 
 Every command takes `--json`, so a script or an AI agent can read your state:
 
@@ -41,6 +45,29 @@ $ teachess today --json
   ...
 }
 ```
+
+Exit codes are stable: `0` ok, `2` bad arguments, `3` setup missing (no username, no data yet), `4` game or card not
+found, `5` chess.com unreachable or rate-limiting. With `--json`, stderr carries `{"error": {"code", "exit", "message"}}`.
+
+## Talk to Claude about your games
+
+teachess gives an agent three ways in, from the lightest to the most complete:
+
+- **The skill.** `teachess skill install` writes `~/.claude/skills/teachess/SKILL.md`, the command reference for
+  agents. Any Claude Code session can then answer "how am I doing in chess?" by calling the CLI itself.
+  `teachess skill` prints the same guide for any other agent.
+- **The coach folder.** `teachess coach` creates `~/teachess-coach/` and opens Claude Code there. The folder holds
+  a `CLAUDE.md` that makes Claude your coach and `notas.md`, a training journal seeded with your starting numbers.
+  The coach reads the journal at the start of each conversation, checks your games, and appends a dated entry
+  when you agree on what to work on, so next week it can tell you whether your first mistake moved from move 6
+  to move 8. It can also quiz you on your own repeated mistakes, one card at a time. `teachess coach "should I
+  keep playing tonight?"` opens it with a question.
+- **The MCP server.** `teachess mcp install claude-code` (or `claude-desktop`) registers `teachess mcp`, a
+  [Model Context Protocol](https://modelcontextprotocol.io) server on stdio with read tools (`today`, `progress`,
+  `games`, `openings`, `review`, `drill`) plus `sync` and `drill_answer`. Each tool runs the CLI command of the
+  same name and returns the same JSON. This is the way in for apps without a shell, like Claude Desktop.
+
+The coach folder and the MCP server work together: the folder's settings allow both the CLI and the MCP tools.
 
 ### The dashboard
 
@@ -95,6 +122,8 @@ chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
                         build_report.py ─▶ data/report.json     (tree, drills, habits)
                                              │
                      teachess (CLI) ◀────────┴────────▶ teachess dash (127.0.0.1 + watcher)
+                            │
+             teachess mcp (stdio) · skill · coach folder ─▶ Claude Code / Claude Desktop
 ```
 
 - It reads only chess.com's [public data API](https://www.chess.com/news/view/published-data-api). There is
@@ -103,7 +132,7 @@ chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
 - The analysis covers rapid games from the last 365 days. A "mistake" is a move that loses 80 centipawns or
   more. A drill is a position where you played the same bad move at least three times.
 - No dependencies beyond [python-chess](https://python-chess.readthedocs.io/): the server is the standard
-  library's `http.server`, the dashboard is one HTML file.
+  library's `http.server`, the dashboard is one HTML file, and the MCP server is plain JSON-RPC over stdio.
 
 ## Limits
 

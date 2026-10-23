@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import json
 import shutil
+import statistics
 import sys
 import threading
 from collections import Counter, defaultdict
@@ -15,8 +16,12 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from zoneinfo import ZoneInfo
 
+import urllib.error
+
 import chess
 import chess.engine
+
+from .errors import SetupError, Unreachable
 
 ROOT = Path(__file__).resolve().parent.parent
 sys.path.insert(0, str(ROOT))
@@ -89,20 +94,30 @@ def key(board: chess.Board) -> str:
 def sync(user: str | None = None, log=print) -> list[dict]:
     """Fetch the current month (and any month not cached yet), merge new games, evaluate their
     openings and rebuild the report. Returns the newly seen games, oldest first."""
-    user = user or config.chess_user()
+    try:
+        user = user or config.chess_user()
+    except SystemExit as e:  # config.py is shared with the root scripts, which exit on a missing user
+        raise SetupError(str(e.code)) from None
     with _lock:
         fetch_games.RAW.mkdir(parents=True, exist_ok=True)
         current = date.today().strftime("%Y-%m")
-        archives = fetch_games.get(f"https://api.chess.com/pub/player/{user}/games/archives")["archives"]
-        fresh = []
-        for url in archives:
-            month = "-".join(url.rstrip("/").split("/")[-2:])
-            out = fetch_games.RAW / f"{month}.json"
-            if out.exists() and month != current:
-                continue
-            raw = fetch_games.get(url)["games"]
-            out.write_text(json.dumps({"games": raw}))
-            fresh.extend(raw)
+        try:
+            archives = fetch_games.get(f"https://api.chess.com/pub/player/{user}/games/archives")["archives"]
+            fresh = []
+            for url in archives:
+                month = "-".join(url.rstrip("/").split("/")[-2:])
+                out = fetch_games.RAW / f"{month}.json"
+                if out.exists() and month != current:
+                    continue
+                raw = fetch_games.get(url)["games"]
+                out.write_text(json.dumps({"games": raw}))
+                fresh.extend(raw)
+        except urllib.error.HTTPError as e:
+            if e.code == 404:
+                raise SetupError(f"chess.com no conoce al jugador «{user}».") from None
+            raise Unreachable(f"chess.com respondió {e.code}.") from None
+        except (urllib.error.URLError, TimeoutError, RuntimeError) as e:
+            raise Unreachable(f"No llego a chess.com: {e}") from None
 
         parse_games.USER = user
         games = load_games()
@@ -218,7 +233,7 @@ def review(g: dict, evals: dict | None = None, report: dict | None = None) -> di
         verdict = "Sin evaluación de Stockfish para esta apertura."
     else:
         verdict = f"Ningún error serio en las primeras {PLIES // 2} jugadas."
-    return {"url": g["url"], "mistakes": mistakes, "first": first, "verdict": verdict}
+    return {"url": g["url"], "mistakes": mistakes, "first": first, "verdict": verdict, "unevaluated_moves": missing}
 
 
 def pawns(cp: int) -> str:
@@ -366,3 +381,43 @@ def branch_names(games: list[dict], since: str, depth: int = 10) -> dict:
         for n in range(1, min(depth, len(g["sans"])) + 1):
             counts[g["color"]][" ".join(g["sans"][:n])][fam] += 1
     return {c: {line: cnt.most_common(1)[0][0] for line, cnt in lines.items()} for c, lines in counts.items()}
+
+
+def progress(games: list[dict] | None = None, report: dict | None = None, months: int = 6) -> dict:
+    """Month by month in rapid: games, points, rating, and how early the first serious mistake comes.
+
+    The yearly figures from the report are the baseline each month is compared against."""
+    games = load_games() if games is None else games
+    report = load_report() if report is None else report
+    evals = load_evals()
+    by_month = defaultdict(list)
+    for g in games:
+        if g["time_class"] == "rapid":
+            by_month[g["end"][:7]].append(g)
+    rows = []
+    for k in sorted(by_month)[-months:]:
+        gs = by_month[k]
+        evaluated, firsts = 0, []
+        for g in gs:
+            r = review(g, evals, report)
+            if r["first"]:
+                evaluated += 1
+                firsts.append(r["first"]["ply"] // 2 + 1)
+            elif not r["unevaluated_moves"]:
+                evaluated += 1
+        rows.append({
+            "month": k, "label": f"{MONTHS[int(k[5:]) - 1]} {k[2:4]}", "games": len(gs),
+            "score": round(100 * sum(g["score"] for g in gs) / len(gs), 1), "rating": gs[-1]["my_rating"],
+            "evaluated": evaluated,
+            "mistake_by12": round(100 * len(firsts) / evaluated) if evaluated else None,
+            "median_first_mistake": float(statistics.median(firsts)) if firsts else None,
+        })
+    totals, fm = report.get("totals", {}), report.get("first_mistake", {})
+    after = report.get("habits", {}).get("after", {})
+    return {
+        "rating": rating_now(games), "months": rows,
+        "year": {"since": report.get("since"), "games": totals.get("recent"), "score": totals.get("recent_score"),
+                 "mistake_by12": fm.get("share_by_move12"), "median_first_mistake": fm.get("median_move"),
+                 "score_after_loss": after.get("tras perder", {}).get("score"),
+                 "score_after_win": after.get("tras ganar", {}).get("score")},
+    }

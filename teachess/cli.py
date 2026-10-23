@@ -179,14 +179,15 @@ def show_progress(p: dict, args) -> None:
     print(dim(f"  {'mes':<8} {'partidas':>8} {'puntos':>7} {'elo':>5}  {'error antes de la 12':>20}  "
               f"{'primer error':>12}  {'graves/partida':>14}"))
     for m in p["months"]:
-        first = "—" if m["median_first_mistake"] is None else f"jugada {m['median_first_mistake']:g}"
+        first = "—" if m["median_first_mistake"] is None else f"jugada {core.move_num(m['median_first_mistake'])}"
         grave = "—" if m["blunders_per_game"] is None else f"{m['blunders_per_game']:.1f}".replace(".", ",")
         print(f"  {m['label']:<8} {m['games']:>8} {pct_text(m['score']):>7} {m['rating']:>5}  "
               f"{pct_text(m['mistake_by12']):>20}  {first:>12}  {grave:>14}")
-    first = "" if y["median_first_mistake"] is None else f", primer error hacia la jugada {y['median_first_mistake']:g}"
+    first = "" if y["median_first_mistake"] is None else f", primer error hacia la jugada {core.move_num(y['median_first_mistake'])}"
     if y.get("blunders_per_game") is not None:
         first += f", {y['blunders_per_game']:.1f} errores graves por partida".replace(".", ",")
-    print(dim(f"\nÚltimo año: {pct_text(y['score'])} de los puntos, error antes de la jugada 12 en el "
+    from .setup import LABELS
+    print(dim(f"\n{LABELS[core.analysis()['window']]}: {pct_text(y['score'])} de los puntos, error antes de la jugada 12 en el "
               f"{pct_text(y['mistake_by12'])}{first}."))
     print(dim(f"Tarjetas: {s['learned']} aprendidas de {s['total']}, {s['due']} para hoy."))
 

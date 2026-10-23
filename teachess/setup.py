@@ -75,7 +75,9 @@ def options(games: list[dict], time_class: str | None = None, measure: bool = Tr
         todo = sorted(core.positions(gs) - evals.keys())
         opts.append({"window": w, "label": LABELS[w] + (f" (desde {first_year})" if w == "all" else ""),
                      "games": len(gs), "positions": len(todo), "todo": todo})
-    workers = max(1, (os.cpu_count() or 2) - 1)
+    # The batch runs on every core but one, yet scales to about half of them (efficiency cores, memory):
+    # a clean install measured 4 minutes where a linear estimate said 2
+    workers = max(1, ((os.cpu_count() or 2) - 1) / 2)
     pace = per_position(opts[-1]["todo"]) if measure else None
     for o in opts:
         todo = o.pop("todo")

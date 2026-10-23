@@ -68,7 +68,7 @@ def seed_notes() -> str:
                   f"- Último año: {y['games']} partidas, {core.fmt_pct(y['score'])} de los puntos.",
                   f"- Error serio antes de la jugada 12 en el {y['mistake_by12']} % de las partidas"
                   + ("." if y["median_first_mistake"] is None
-                     else f"; el primero llega hacia la jugada {y['median_first_mistake']:g}."),
+                     else f"; el primero llega hacia la jugada {core.move_num(y['median_first_mistake'])}."),
                   f"- Tras perder sacas el {core.fmt_pct(y['score_after_loss'])}; "
                   f"tras ganar, el {core.fmt_pct(y['score_after_win'])}.", ""]
     return "\n".join(lines)

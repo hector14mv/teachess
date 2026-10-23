@@ -434,6 +434,11 @@ def today(games: list[dict] | None = None, report: dict | None = None, at: datet
     }
 
 
+def move_num(x: float) -> str:
+    """A median move number the Spanish way: 7 -> '7', 6.5 -> '6,5'."""
+    return f"{x:g}".replace(".", ",")
+
+
 def fmt_pct(x) -> str:
     return "—" if x is None else f"{x:.1f} %".replace(".", ",")
 
@@ -494,9 +499,11 @@ def progress(games: list[dict] | None = None, report: dict | None = None, months
     games = load_games() if games is None else games
     report = load_report() if report is None else report
     evals = load_evals()
+    since = window_since()
     by_month = defaultdict(list)
     for g in games:
-        if g["time_class"] == tc():
+        # Only the analysed window: older games have no evaluations past their shared opening positions
+        if g["time_class"] == tc() and g["end"] >= since:
             by_month[g["end"][:7]].append(g)
     rows = []
     for k in sorted(by_month)[-months:]:

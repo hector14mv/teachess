@@ -69,7 +69,7 @@ def parse(g: dict) -> dict | None:
         "eco": game.headers.get("ECO", ""),
         "opening": opening_name(g.get("eco", "")),
         "plies": len(sans),
-        "sans": sans[:40],
+        "sans": sans,
         "my_clocks": my_clocks,
         "opp_clocks": opp_clocks[:5],
         "my_acc": acc.get("white" if me_white else "black"),
@@ -84,7 +84,7 @@ def main() -> None:
             r = parse(g)
             if r:
                 rows.append(r)
-    rows.sort(key=lambda r: r["end"])
+    rows.sort(key=lambda r: datetime.fromisoformat(r["end"]))  # by the moment, not the offset's text
     with open(ROOT / "data" / "games.jsonl", "w") as out:
         for r in rows:
             out.write(json.dumps(r) + "\n")

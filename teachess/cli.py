@@ -7,6 +7,7 @@ for people, so the terminal, scripts and agents all see the same numbers.
 from __future__ import annotations
 
 import argparse
+import contextlib
 import json
 import re
 import sys
@@ -235,10 +236,14 @@ def cmd_setup(args) -> None:
     from . import setup
     if args.json and not args.window:
         # For agents: the options to show the player; call again with --window to analyse
-        return emit(setup.options(core.load_games() or _fetch_all(), args.time_class))
-    r = setup.run(args.window, args.time_class, interactive=sys.stdin.isatty() and not args.yes,
-                  log=(lambda *_: None) if args.json else print)
-    emit(r) if args.json else show_setup(r, args)
+        with contextlib.redirect_stdout(sys.stderr):
+            o = setup.options(core.load_games() or _fetch_all(), args.time_class)
+        return emit(o)
+    if args.json:
+        with contextlib.redirect_stdout(sys.stderr):
+            r = setup.run(args.window, args.time_class, log=lambda *_: None)
+        return emit(r)
+    show_setup(setup.run(args.window, args.time_class, interactive=sys.stdin.isatty() and not args.yes), args)
 
 
 def _fetch_all() -> list[dict]:
@@ -338,8 +343,12 @@ def run(args) -> None:
     if args.cmd == "drill" and not args.json and not args.answer:
         # The interactive deck needs no presented cards up front (presenting asks Stockfish per card)
         return drill_loop(args)
-    result = data(args)
-    emit(result) if args.json else show(result, args)
+    if args.json:
+        # The pipeline scripts print progress; with --json stdout carries only the result
+        with contextlib.redirect_stdout(sys.stderr):
+            result = data(args)
+        return emit(result)
+    show(data(args), args)
 
 
 def build_parser() -> Parser:

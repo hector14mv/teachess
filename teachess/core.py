@@ -136,6 +136,8 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
             raise Unreachable(f"No llego a chess.com: {e}") from None
 
         parse_games.USER = user
+        if analyse:
+            upgrade_games()
         games = load_games()
         known = {g["url"] for g in games}
         new = [r for r in (parse_games.parse(g) for g in fresh) if r and r["url"] not in known]
@@ -153,6 +155,17 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
             evaluate_games([g for g in new if g["time_class"] == tc() and g["end"] >= since], log=log)
             rebuild_report()
         return new
+
+
+def upgrade_games() -> bool:
+    """Re-parse the cached archive when games.jsonl still holds rows cut at 40 plies (older versions)."""
+    games = load_games()
+    if not any(len(g["sans"]) < g["plies"] for g in games):
+        return False
+    parse_games.USER = config.chess_user()
+    with _lock:
+        parse_games.main()
+    return True
 
 
 def rebuild_report() -> None:

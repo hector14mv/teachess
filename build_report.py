@@ -89,7 +89,8 @@ def blunders(g: dict, evals: dict) -> tuple[list[dict], bool]:
     sign = 1 if g["color"] == "white" else -1
     mine = 0 if g["color"] == "white" else 1
     board = chess.Board()
-    out, complete = [], key(board) in evals
+    # Rows parsed before teachess kept every move hold only the first 40 plies: never call those complete
+    out, complete = [], key(board) in evals and len(g["sans"]) >= g.get("plies", 0)
     for i, san in enumerate(g["sans"]):
         before = key(board)
         board.push_san(san)
@@ -173,7 +174,9 @@ def main() -> None:
     drills = drills[:24]
 
     # --- blunders anywhere in the game: the most recent become puzzles ----------------------
-    puzzles, seen, per_game = [], set(), []
+    # A blunder that is already a repeated opening card is drilled there, not twice
+    puzzles, per_game = [], []
+    seen = {(d["fen"], d["played"]) for d in drills}
     for g in reversed(rec):
         found, complete = blunders(g, evals)
         if complete:

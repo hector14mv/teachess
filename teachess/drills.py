@@ -22,7 +22,9 @@ _choices_cache: dict[str, list[str]] = {}  # card id|answer -> choices
 
 
 def card_id(d: dict) -> str:
-    return hashlib.sha1(f"{d['fen']}|{d['played']}".encode()).hexdigest()[:10]
+    # Opening cards keep their original ids (saved progress); puzzles get their own namespace
+    prefix = "puzzle|" if d.get("kind") == "puzzle" else ""
+    return hashlib.sha1(f"{prefix}{d['fen']}|{d['played']}".encode()).hexdigest()[:10]
 
 
 def load_state() -> dict:

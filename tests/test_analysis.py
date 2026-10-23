@@ -45,6 +45,14 @@ expect("white made none", build_report.blunders({"color": "white", "sans": sans}
 del evals[core.key(board)]
 expect("missing position -> incomplete", build_report.blunders(black, evals)[1], False)
 
+truncated = {"color": "black", "sans": sans[:4], "plies": len(sans)}
+expect("row cut at 40 plies is never complete", build_report.blunders(truncated, evals)[1], False)
+
+# --- puzzle ids never collide with the opening card of the same position and move -----------
+from teachess import drills  # noqa: E402
+same = {"fen": "x 0 1", "played": "Nf6"}
+expect("puzzle id differs", drills.card_id(same) != drills.card_id({**same, "kind": "puzzle"}), True)
+
 # --- setup options per player -------------------------------------------------------------------
 core.load_evals = lambda: {}
 
@@ -76,6 +84,21 @@ expect("two-year account: no duplicate of 3y as all", [o["window"] for o in blit
 tiny = setup.options(games({"rapid": 15}, 10), measure=False)
 expect("tiny archive: not asked", tiny["ask"], False)
 expect("tiny archive: everything", tiny["recommended"], tiny["options"][-1]["window"])
+
+# --- a window with no games is refused before anything is saved --------------------------------
+from teachess.errors import SetupError  # noqa: E402
+old_games = games({"rapid": 50}, 30)[:100]  # only games from more than a year ago
+core.sync = lambda **kw: []
+core.upgrade_games = lambda: False
+core.load_games = lambda: old_games
+saved = []
+core.config.save = saved.append
+try:
+    setup.run(window="3m")
+    expect("empty window refused", "no error", "SetupError")
+except SetupError:
+    expect("empty window refused", "SetupError", "SetupError")
+expect("nothing saved", saved, [])
 
 print("ALL PASS" if ok else "SOME FAILED")
 sys.exit(0 if ok else 1)

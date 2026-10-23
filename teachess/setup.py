@@ -110,18 +110,23 @@ def run(window: str | None = None, time_class: str | None = None, interactive: b
         raise UsageError(f"Ventana desconocida: {window}. Usa una de {', '.join(core.WINDOWS)}.")
     log("Descargando tus partidas de chess.com (la primera vez, mes a mes)…")
     core.sync(log=log, analyse=False)
+    if core.upgrade_games():
+        log("Partidas releídas enteras (antes se guardaban solo las 20 primeras jugadas).")
     games = core.load_games()
     if not games:
         raise SetupError("No hay partidas en tu archivo de chess.com.")
     o = options(games, time_class, measure=window is None)
     if not window:
         window = ask(o) if interactive and o["ask"] else o["recommended"]
+    since = core.window_since(window)
+    gs = [g for g in games if g["time_class"] == o["time_class"] and g["end"] >= since]
+    if not gs:
+        raise SetupError(f"No tienes partidas de {o['time_class']} en esa ventana ({LABELS[window].lower()}). "
+                         "Elige una más larga.")
     cfg = dict(core.config.load())
     cfg["analysis"] = {"window": window, "time_class": o["time_class"]}
     core.config.save(cfg)
 
-    since = core.window_since(window)
-    gs = [g for g in games if g["time_class"] == o["time_class"] and g["end"] >= since]
     start = time.monotonic()
     core.evaluate_games(gs, log=log)
     core.rebuild_report()

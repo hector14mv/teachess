@@ -130,6 +130,7 @@ def run(window: str | None = None, time_class: str | None = None, interactive: b
     start = time.monotonic()
     core.evaluate_games(gs, log=log)
     core.rebuild_report()
+    core.REANALYSE.unlink(missing_ok=True)
     report = core.load_report()
     return {"window": window, "time_class": o["time_class"], "games": len(gs), "since": since,
             "minutes": round((time.monotonic() - start) / 60, 1),

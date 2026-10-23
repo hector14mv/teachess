@@ -100,8 +100,10 @@ raw = {"url": "u1", "pgn": pgn, "rules": "chess", "end_time": 1760000000, "time_
        "time_control": "600", "white": {"username": "me", "rating": 1, "result": "win"},
        "black": {"username": "x", "rating": 1, "result": "resigned"}}
 (fetch_games.RAW / "2026-10.json").write_text(json.dumps({"games": [raw]}))
-rows = [{"url": "u1", "end": "2026-10-09T10:00:00+02:00", "sans": ["e4"], "plies": 6},
-        {"url": "gone", "end": "2026-10-10T10:00:00+02:00", "sans": ["d4"], "plies": 30}]
+core_mod.REANALYSE = tmp / "reanalyse.flag"
+rows = [{"url": "u1", "end": "2026-10-09T10:00:00+02:00", "sans": ["e4"], "plies": 6, "my_acc": 98.5},
+        {"url": "gone", "end": "2026-10-10T10:00:00+02:00", "sans": ["d4"], "plies": 30},
+        {"url": "whole", "end": "2026-10-11T10:00:00+02:00", "sans": ["c4"], "plies": 1, "my_acc": 77.0}]
 core_mod.GAMES.write_text("".join(json.dumps(r) + "\n" for r in rows))
 core_mod.load_games = lambda: [json.loads(line) for line in core_mod.GAMES.read_text().splitlines()]
 expect("recovered a cut game", core_mod.upgrade_games(), True)
@@ -109,7 +111,14 @@ after = {g["url"]: g for g in core_mod.load_games()}
 expect("whole game now", len(after["u1"]["sans"]), 6)
 expect("game missing from cache kept", "gone" in after, True)
 expect("and marked", after["gone"].get("cut"), True)
+expect("fields the cache lacks are kept", after["u1"]["my_acc"], 98.5)
+expect("complete rows untouched", after["whole"]["my_acc"], 77.0)
+expect("re-analysis flagged", core_mod.REANALYSE.exists(), True)
 expect("no retry next time", core_mod.upgrade_games(), False)
+back = {**raw, "url": "gone"}  # sync writes a fresh month to the cache before re-reading
+(fetch_games.RAW / "2026-10.json").write_text(json.dumps({"games": [raw, back]}))
+expect("a fresh download brings it back", core_mod.upgrade_games([back]), True)
+expect("no longer marked", any(g.get("cut") for g in core_mod.load_games()), False)
 
 # --- a window with no games is refused before anything is saved --------------------------------
 from teachess.errors import SetupError  # noqa: E402

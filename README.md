@@ -111,7 +111,9 @@ on how much you play, that can take several minutes. After that, each sync only 
 and evaluates the new games.
 
 Instead of `config.json` you can set `TEACHESS_USER=<username>`. `config.json` can also hold your own
-coaching notes for the Repertoire tab, keyed by colour and line (see `config.example.json`).
+coaching notes for the Repertoire tab, keyed by colour and line (see `config.example.json`). A note's `move` is
+your plan for that position, and the drills follow it: a mistake you make with the planned move is not drilled,
+and where Stockfish prefers another move, the card asks for the plan's move instead.
 
 ## How it works
 

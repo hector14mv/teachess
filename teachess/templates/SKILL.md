@@ -20,7 +20,7 @@ them or translate them to the user's language.
 | `teachess games --json [--since 30d\|2w\|3m\|YYYY-MM-DD] [--tc rapid\|blitz\|bullet\|daily\|all] [--limit 20]` | games, newest first: `result`, `side`, `opening`, `how`, `opp`, `opp_rating`, `my_rating`, `url` |
 | `teachess openings --json [--color white\|black\|all]` | repertoire of the last year: `name`, `n` games, `score` %, `mistake_by12` % |
 | `teachess review --json [last\|URL\|game id]` | one game: every move that lost ≥ 0.8 pawns (`mistakes[]` with `move`, `best_move`, `loss` in centipawns, `repeated` = how many earlier games had the same mistake) and a `verdict` |
-| `teachess drill --json [--limit 10]` | flashcards due today: `stats` and `due[]`, each with `id`, `fen`, `line` (moves that led there), `ask`, `choices[]` (three moves: the best one, the one the user keeps playing, one more) |
+| `teachess drill --json [--limit 10]` | flashcards due today: `stats` and `due[]`, each with `id`, `fen`, `line` (moves that led there), `ask`, `choices[]` (three moves: the right one, the one the user keeps playing, one more) and `plan` (when set, the right move is the user's own plan for that position, not Stockfish's: say so) |
 | `teachess drill --answer CARD MOVE --json` | grades an answer (`MOVE` is a `choices[].san`), moves the card between Leitner boxes and returns `correct`, `best`, `title`, `body`, next `due` date |
 
 A serious mistake is a move that loses 80 centipawns (0.8 pawns) or more. `score` is the share of points

@@ -37,9 +37,26 @@ def is_due(entry: dict | None, today: date) -> bool:
     return entry is None or date.fromisoformat(entry["due"]) <= today
 
 
+def plan() -> dict:
+    """The coach's chosen moves from config.json's advice, keyed by colour and line ("black|d4")."""
+    return {k: a for k, a in core.config.load().get("advice", {}).items() if a.get("move")}
+
+
 def deck(report: dict | None = None) -> list[dict]:
+    """The repeated mistakes as cards, bent to the plan: a move the plan keeps is not drilled, and where the
+    plan picks another move than Stockfish, the card asks for the plan's move."""
     report = core.load_report() if report is None else report
-    return [{**d, "id": card_id(d), "n": i + 1} for i, d in enumerate(report.get("drills", []))]
+    chosen = plan()
+    cards = []
+    for d in report.get("drills", []):
+        a = chosen.get(f"{d['color']}|{' '.join(d['line'])}")
+        if a and d["played"] == a["move"]:
+            continue
+        card = {**d, "id": card_id(d)}
+        if a and a["move"] != d["best"]:
+            card.update(best=a["move"], engine_best=d["best"], plan=a["text"])
+        cards.append(card)
+    return [{**c, "n": i + 1} for i, c in enumerate(cards)]
 
 
 def queue(report: dict | None = None, today: date | None = None) -> tuple[list[dict], dict]:
@@ -66,13 +83,15 @@ def choices(card: dict) -> list[str]:
         try:
             for info in engine.analyse(board, chess.engine.Limit(depth=10), multipv=4):
                 san = board.san(info["pv"][0])
-                if san not in picks:
+                # On a plan card, Stockfish's own favourite would be graded wrong: leave it out
+                if san not in picks and san != card.get("engine_best"):
                     picks.append(san)
                     break
         finally:
             engine.quit()
     if len(picks) < 3:
-        picks.append(next(board.san(m) for m in board.legal_moves if board.san(m) not in picks))
+        picks.append(next(board.san(m) for m in board.legal_moves
+                          if board.san(m) not in picks and board.san(m) != card.get("engine_best")))
     random.Random(card["id"]).shuffle(picks)
     _choices_cache[card["id"]] = picks
     return picks
@@ -94,7 +113,7 @@ def present(card: dict) -> dict:
         "side": core.SIDE[card["color"]], "opening": card["opening"],
         "line": core.format_line(card["line"]), "ask": label + " ?",
         "times": card["times"], "reached": card["reached"], "choices": opts,
-        "box": entry["box"] if entry else None, "example": card["example"],
+        "box": entry["box"] if entry else None, "example": card["example"], "plan": card.get("plan"),
     }
 
 
@@ -112,7 +131,9 @@ def answer(card: dict, san: str, today: date | None = None) -> dict:
         entry["right"] += 1
         days = INTERVALS[entry["box"]]
         ev = card["eval_best"]
-        if ev >= 30:
+        if card.get("plan"):
+            why = "Es la jugada de tu plan."
+        elif ev >= 30:
             why = f"Mantienes la ventaja (+{core.pawns(ev)} según Stockfish)."
         elif ev > -30:
             why = "Mantienes la posición igualada."
@@ -124,13 +145,16 @@ def answer(card: dict, san: str, today: date | None = None) -> dict:
         entry["box"] = 1
         entry["wrong"] += 1
         days = INTERVALS[1]
+        good = (f"La de tu plan es {label}{card['best']}" if card.get("plan")
+                else f"La buena es {label}{card['best']}")
         if san == card["played"]:
             verdict = {"tone": "bad", "title": "Esta es la que sueles jugar",
                        "body": f"{label}{san} la has jugado {card['times']} de {card['reached']} veces y pierde "
-                               f"{core.pawns(card['loss'])} peones. La buena es {label}{card['best']}. Vuelve mañana."}
+                               f"{core.pawns(card['loss'])} peones. {good}. Vuelve mañana."}
         else:
-            verdict = {"tone": "bad", "title": "No es la mejor",
-                       "body": f"La que pide Stockfish es {label}{card['best']}. Vuelve mañana."}
+            verdict = {"tone": "bad", "title": "No es la de tu plan" if card.get("plan") else "No es la mejor",
+                       "body": (f"{good}. Vuelve mañana." if card.get("plan")
+                                else f"La que pide Stockfish es {label}{card['best']}. Vuelve mañana.")}
     entry["due"] = (today + timedelta(days=days)).isoformat()
     state[card["id"]] = entry
     save_state(state)

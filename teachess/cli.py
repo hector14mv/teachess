@@ -62,11 +62,14 @@ def pct_text(x) -> str:
 
 def data_sync(args) -> list[dict]:
     log = (lambda *_: None) if args.json else print
-    if "analysis" not in core.config.load() and not args.json and sys.stdin.isatty():
-        # First sync of a new player: ask how much history to analyse instead of assuming a year
-        from . import setup
-        show_setup(setup.run(interactive=True), args)
-        return []
+    if "analysis" not in core.config.load() and not args.json:
+        if not core.GAMES.exists() and sys.stdin.isatty():
+            # A brand-new install: ask how much history to analyse instead of assuming a year
+            from . import setup
+            show_setup(setup.run(interactive=True), args)
+            return []
+        if core.GAMES.exists():
+            print(dim("Consejo: teachess setup analiza tus partidas enteras y te deja elegir cuánto historial."))
     return [core.describe(g) for g in core.sync(log=log)]
 
 

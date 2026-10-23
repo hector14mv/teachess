@@ -126,7 +126,7 @@ def sync(user: str | None = None, log=print) -> list[dict]:
         if not new and REPORT.exists():
             return []
         games.extend(new)
-        games.sort(key=lambda g: g["end"])
+        games.sort(key=end_dt)  # by the moment: the ISO text's offset changes with daylight saving time
         with open(GAMES, "w") as f:
             for g in games:
                 f.write(json.dumps(g) + "\n")

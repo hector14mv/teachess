@@ -7,12 +7,14 @@ told you about, so it works whoever synced them: this watcher, the dashboard or 
 
 from __future__ import annotations
 
+import fcntl
 import json
 import os
 import plistlib
 import subprocess
 import sys
 import time
+import traceback
 from datetime import datetime
 from pathlib import Path
 
@@ -21,6 +23,7 @@ from .errors import SetupError, TeachessError
 
 STATE = core.DATA / "watch_state.json"
 LOG = core.DATA / "watch.log"
+LOCK = core.DATA / "watch.lock"
 LABEL = "dev.teachess.watch"
 POLL_SECONDS = 120
 FRESH_HOURS = 3  # a game first seen later than this (the laptop was asleep) is not worth a notification
@@ -28,7 +31,16 @@ BIN = core.ROOT / "bin" / "teachess"
 
 
 def load_state() -> dict:
-    return json.loads(STATE.read_text()) if STATE.exists() else {}
+    try:
+        return json.loads(STATE.read_text())
+    except (OSError, ValueError):  # missing or cut short: start over from now
+        return {}
+
+
+def save_state(state: dict) -> None:
+    tmp = STATE.with_suffix(".tmp")
+    tmp.write_text(json.dumps(state))
+    tmp.replace(STATE)
 
 
 def lesson(g: dict, evals: dict, report: dict, due: int) -> dict:
@@ -42,19 +54,30 @@ def lesson(g: dict, evals: dict, report: dict, due: int) -> dict:
 
 
 def check(live: bool = True, at: datetime | None = None, send=notify.send) -> list[dict]:
-    """Sync, then tell about each rapid game not told yet and about a losing streak once per streak."""
-    if live:
-        core.sync(log=lambda *_: None)
+    """Sync, then tell about each rapid game not told yet and about a losing streak once per streak.
+
+    Only one check runs at a time (the service and a foreground watcher share the state), and the state moves
+    on only after the notifications went out, so a crash repeats a notification rather than losing it."""
+    core.DATA.mkdir(exist_ok=True)
+    with open(LOCK, "w") as lock:
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            return []  # another check is running; it will tell
+        if live:
+            core.sync(log=lambda *_: None)
+        return _check(at or core.now(), send)
+
+
+def _check(at: datetime, send) -> list[dict]:
     games, report, evals = core.load_games(), core.load_report(), core.load_evals()
-    at = at or core.now()
-    rapid = [g for g in games if g["time_class"] == "rapid" and core.end_dt(g) <= at]
+    # Sorted by the moment, not by the ISO text: the offset changes with daylight saving time
+    rapid = sorted((g for g in games if g["time_class"] == "rapid" and core.end_dt(g) <= at), key=core.end_dt)
     state = load_state()
-    if not rapid:
-        return []
     if "last_end" not in state:
-        # First run: start from now instead of announcing the whole archive
-        state["last_end"] = rapid[-1]["end"]
-        STATE.write_text(json.dumps(state))
+        # First run: start from the latest game (or from now) instead of announcing the whole archive
+        state["last_end"] = rapid[-1]["end"] if rapid else at.isoformat()
+        save_state(state)
         return []
 
     last = datetime.fromisoformat(state["last_end"])
@@ -62,18 +85,25 @@ def check(live: bool = True, at: datetime | None = None, send=notify.send) -> li
            and (at - core.end_dt(g)).total_seconds() < FRESH_HOURS * 3600]
     due = drills.queue(report)[1]["due"]
     events = [lesson(g, evals, report, due) for g in new[-3:]]
-    if core.end_dt(rapid[-1]) > last:
-        state["last_end"] = rapid[-1]["end"]
+    if len(new) > 3:
+        events.insert(0, {"type": "more", "title": f"{len(new) - 3} partidas más desde el último aviso",
+                          "body": "Míralas con teachess games.", "url": None})
 
     t = core.today(games, report, at=at)
-    if t["state"] == "streak" and state.get("stopped_after") != t["last"]["url"]:
-        events.append({"type": "stop", "title": f"Llevas {t['losses_in_a_row']} derrotas seguidas. Para aquí.",
-                       "body": f"{t['advice']} Mientras, repasa tus tarjetas: teachess drill.", "url": None})
-        state["stopped_after"] = t["last"]["url"]
+    streak_start = None
+    if t["state"] == "streak":
+        streak_start = rapid[-t["losses_in_a_row"]]["url"]  # the streak is known by its first defeat
+        if state.get("streak") != streak_start:
+            events.append({"type": "stop", "title": f"Llevas {t['losses_in_a_row']} derrotas seguidas. Para aquí.",
+                           "body": f"{t['advice']} Mientras, repasa tus tarjetas: teachess drill.", "url": None})
 
-    STATE.write_text(json.dumps(state))
     for e in events:
         send(e["title"], e["body"], e["url"])
+    if rapid and core.end_dt(rapid[-1]) > last:
+        state["last_end"] = rapid[-1]["end"]
+    if streak_start:
+        state["streak"] = streak_start
+    save_state(state)
     return events
 
 
@@ -84,6 +114,8 @@ def loop(live: bool = True) -> None:
             check(live=live)
         except TeachessError as e:  # chess.com down or rate-limiting: try again next round
             print(f"  ▸ {e}", flush=True)
+        except Exception:  # nobody watches this loop: log the failure and keep going
+            traceback.print_exc()
         time.sleep(POLL_SECONDS)
 
 
@@ -134,7 +166,9 @@ def uninstall() -> dict:
     path = plist_path()
     if not path.exists():
         return {"status": "absent", "plist": str(path)}
-    launchctl("bootout", domain(), str(path))
+    done = launchctl("bootout", domain(), str(path))
+    if done.returncode and launchctl("print", f"{domain()}/{LABEL}").returncode == 0:
+        raise SetupError(f"launchctl bootout falló y el servicio sigue cargado: {(done.stderr or done.stdout).strip()}")
     path.unlink()
     return {"status": "removed", "plist": str(path)}
 

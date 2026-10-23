@@ -257,7 +257,7 @@ def cmd_watch(args) -> None:
             print(dim("Revisa chess.com cada 2 minutos aunque el panel esté cerrado. Registro: " + result["log"]))
         return
     if args.once or args.at:
-        events = watch.check(live=not args.offline, at=args.at, send=(lambda *_: None) if args.json else watch.notify.send)
+        events = watch.check(live=not args.offline, at=args.at)
         return emit(events) if args.json else None
     watch.loop(live=not args.offline)
 

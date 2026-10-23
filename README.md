@@ -148,6 +148,11 @@ chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
 - No dependencies beyond [python-chess](https://python-chess.readthedocs.io/): the server is the standard
   library's `http.server`, the dashboard is one HTML file, and the MCP server is plain JSON-RPC over stdio.
 
+## Tests
+
+`.venv/bin/python tests/test_watch.py` runs the watcher's scenarios (daylight saving time, several games between
+checks, one stop per streak, failed notifications, a corrupt state file, two watchers at once) on synthetic games.
+
 ## Limits
 
 - The interface and the coaching text are in Spanish for now.

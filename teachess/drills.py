@@ -43,11 +43,12 @@ def plan() -> dict:
 
 
 def legal(fen: str, san: str) -> bool:
+    board = chess.Board(fen)
     try:
-        chess.Board(fen).parse_san(san)
-        return True
+        move = board.parse_san(san)
     except ValueError:
         return False
+    return move != chess.Move.null() and board.is_legal(move)  # parse_san also accepts "--", a null move
 
 
 def deck(report: dict | None = None) -> list[dict]:

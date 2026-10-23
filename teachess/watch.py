@@ -34,7 +34,8 @@ def load_state() -> dict:
     """The saved state, or {} (start over from now) when it is missing, cut short or not what we wrote."""
     try:
         state = json.loads(STATE.read_text())
-        datetime.fromisoformat(state["last_end"])
+        if datetime.fromisoformat(state["last_end"]).tzinfo is None:
+            return {}  # a naive date cannot be compared with the games' moments
         return state if isinstance(state.get("streak"), (str, type(None))) else {}
     except (OSError, ValueError, TypeError, KeyError, AttributeError):
         return {}

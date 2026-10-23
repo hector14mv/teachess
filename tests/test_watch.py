@@ -77,7 +77,8 @@ expect("state untouched when nobody was reached", watch.STATE.read_text() == bef
 expect("retried next check", run(s0 + timedelta(minutes=124)), (["game"], 1))
 
 # 6: truncated state file -> start over, no crash
-for bad in ('{"last_en', "null", "[]", '{"last_end": "broken"}', '{"last_end": 5}'):
+for bad in ('{"last_en', "null", "[]", '{"last_end": "broken"}', '{"last_end": 5}',
+            '{"last_end": "2026-10-23T10:00:00"}'):
     watch.STATE.write_text(bad)
     expect(f"bad state {bad} reinit", run(s0 + timedelta(minutes=126)), ([], 0))
 

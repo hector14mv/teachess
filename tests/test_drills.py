@@ -38,6 +38,10 @@ deck = drills.deck(REPORT)
 expect("illegal plan ignored", deck[0]["best"], "e4")
 expect("illegal plan card presents", len(drills.present(deck[0])["choices"]), 3)
 
+for bad in ("--", "0000"):
+    PLAN["white|"] = {"move": bad, "text": "null move"}
+    expect(f"null move {bad} ignored", drills.deck(REPORT)[0]["best"], "e4")
+
 # Changing the plan changes the right answer and the choices of a card that keeps its id
 PLAN["white|"] = {"move": "d4", "text": "plan d4"}
 first = drills.deck(REPORT)[0]

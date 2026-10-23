@@ -1,0 +1,508 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>teachess</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Inter+Tight:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --ground: #0F1412; --bar: #121916; --card: #151D19; --card-2: #1A2420; --line: #222C27; --line-2: #2E3A34;
+  --text: #E6ECE8; --soft: #C9D3CD; --muted: #9BA8A0; --blue: #7DB3FF; --orange: #F2994A; --amber: #E8B04B; --live: #6FD39A;
+  --mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+* { box-sizing: border-box; }
+body { margin: 0; background: var(--ground); color: var(--text); font: 15px/1.45 'Inter Tight', system-ui, sans-serif; }
+a { color: var(--blue); } a:hover { color: #A9CCFF; }
+button { font: inherit; cursor: pointer; color: inherit; }
+button:focus-visible, a:focus-visible { outline: 2px solid var(--amber); outline-offset: 2px; }
+.mono { font-family: var(--mono); }
+.muted { color: var(--muted); }
+header { border-bottom: 1px solid var(--line); background: var(--bar); position: sticky; top: 0; z-index: 5; }
+.wrap { max-width: 1240px; margin: 0 auto; padding-left: 20px; padding-right: 20px; }
+.top { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 28px; padding: 14px 0; }
+.brand { display: flex; align-items: baseline; gap: 10px; }
+.brand b { font-family: var(--mono); font-size: 18px; letter-spacing: -0.02em; }
+.brand span { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+nav { display: flex; flex-wrap: wrap; gap: 4px; }
+.tab { min-height: 44px; padding: 0 16px; border: 0; border-radius: 10px; font-weight: 600; background: transparent; color: var(--muted); transition: background .15s, color .15s; }
+.tab:hover { color: var(--text); }
+.tab[aria-current="page"] { background: #22302A; color: #fff; }
+.right { margin-left: auto; display: flex; flex-wrap: wrap; align-items: center; gap: 14px; }
+.pill { display: flex; align-items: center; gap: 8px; padding: 6px 12px; border-radius: 999px; background: #18221D; font-size: 13px; color: #B8C4BD; }
+.dot { width: 8px; height: 8px; border-radius: 50%; background: var(--live); box-shadow: 0 0 0 4px rgba(111,211,154,.18); }
+.dot.sync { background: var(--amber); box-shadow: 0 0 0 4px rgba(232,176,75,.2); animation: pulse 1.2s ease-in-out infinite; }
+.dot.off { background: #5E6B64; box-shadow: none; }
+.dot.err { background: var(--orange); box-shadow: 0 0 0 4px rgba(242,153,74,.2); }
+@keyframes pulse { 50% { opacity: .35; } }
+@media (prefers-reduced-motion: reduce) { .dot.sync { animation: none; } * { transition: none !important; } }
+.who { font-size: 13px; color: var(--muted); } .who b { color: var(--text); font-weight: 600; }
+main { padding: 28px 0 64px; }
+.row { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.main-col { flex: 999 1 560px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.side-col { flex: 1 1 300px; min-width: 0; display: flex; flex-direction: column; gap: 20px; }
+.card { padding: 20px 22px; border-radius: 18px; background: var(--card); min-width: 0; }
+h1, h2, p { margin: 0; }
+h2 { font-size: 17px; }
+.kicker { font-family: var(--mono); font-size: 12px; letter-spacing: .06em; text-transform: uppercase; }
+.hero { padding: 28px; border-radius: 18px; }
+.hero h1 { margin-top: 6px; font-size: clamp(28px, 4vw, 44px); line-height: 1.08; letter-spacing: -0.02em; }
+.hero p.body { margin-top: 12px; max-width: 62ch; color: var(--soft); font-size: 16px; }
+.meter { margin-top: 22px; display: flex; flex-wrap: wrap; align-items: center; gap: 18px; font-size: 13px; color: #B8C4BD; }
+.meter .seg { display: flex; gap: 6px; } .meter .seg span { width: 44px; height: 10px; border-radius: 4px; background: #2A3530; }
+.actions { margin-top: 22px; display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.btn { display: inline-flex; align-items: center; min-height: 44px; padding: 0 18px; border-radius: 10px; border: 0; font-weight: 700; color: var(--ground); text-decoration: none; }
+.btn:hover { color: var(--ground); filter: brightness(1.08); }
+.btn.ghost { border: 1px solid #3A4842; background: transparent; color: var(--text); font-weight: 600; }
+.btn.ghost:hover { color: var(--text); background: #1A2420; }
+.toast { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin-bottom: 20px; padding: 12px 16px; border-radius: 12px; background: #16263A; color: #CFE2FF; font-size: 14px; animation: drop .35s cubic-bezier(.2,.9,.3,1.2); }
+.toast .tag { font-family: var(--mono); font-size: 12px; padding: 2px 8px; border-radius: 6px; background: #2F6DC4; color: #fff; }
+.toast button { margin-left: auto; min-height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid #2F4E7A; background: transparent; font-size: 13px; }
+@keyframes drop { from { transform: translateY(-8px); opacity: 0; } }
+.games { display: flex; flex-direction: column; }
+.game { display: grid; grid-template-columns: 96px 74px minmax(0,1fr) auto; gap: 12px; align-items: center; padding: 11px 0; border-top: 1px solid var(--line); font-size: 14px; color: var(--text); text-decoration: none; }
+.game:hover { color: var(--text); background: #18211D; }
+.game .t { font-family: var(--mono); font-size: 12px; color: var(--muted); }
+.chip { justify-self: start; padding: 2px 8px; border-radius: 6px; font-size: 12px; font-weight: 600; }
+.chip.win { background: #1C3555; color: #CFE2FF; } .chip.loss { background: #4A2A14; color: #FFD9B8; } .chip.draw { background: #2A3530; color: var(--soft); }
+.ellip { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+@media (max-width: 560px) { .game { grid-template-columns: 74px minmax(0,1fr); } .game .t, .game .opp { display: none; } }
+.big { font-family: var(--mono); font-weight: 700; letter-spacing: -0.03em; }
+.bar { margin-top: 5px; height: 6px; border-radius: 3px; background: var(--line); } .bar > div { height: 6px; border-radius: 3px; }
+.seg-ctl { display: flex; gap: 4px; padding: 4px; border-radius: 12px; background: var(--ground); }
+.seg-ctl button { min-height: 44px; padding: 0 16px; border: 0; border-radius: 9px; font-weight: 600; font-size: 14px; background: transparent; color: var(--muted); }
+.seg-ctl button[aria-pressed="true"] { background: #22302A; color: #fff; }
+.path { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--mono); font-size: 14px; }
+.path button { padding: 6px 10px; border-radius: 8px; border: 0; background: #1E2823; min-height: 36px; }
+.path button:hover { background: #26332D; }
+.path .ask { padding: 6px 10px; border-radius: 8px; background: #3A2F14; color: #F2D184; display: inline-flex; align-items: center; }
+.branches { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
+.branch { text-align: left; min-height: 64px; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--bar); display: grid; grid-template-columns: 96px minmax(0,1fr) 64px; gap: 14px; align-items: center; transition: border-color .15s, background .15s; }
+.branch:hover { background: #18211D; }
+.branch[aria-pressed="true"] { border-color: var(--amber); background: #1E2A25; }
+.branch .san { font-family: var(--mono); font-size: 17px; font-weight: 700; }
+.branch .pct { font-family: var(--mono); font-size: 17px; font-weight: 700; text-align: right; }
+.board { display: grid; grid-template-columns: repeat(8, minmax(0,1fr)); border-radius: 10px; overflow: hidden; box-shadow: 0 20px 50px rgba(0,0,0,.45); }
+.sq { aspect-ratio: 1; display: flex; align-items: center; justify-content: center; font-size: clamp(26px, 5vw, 46px); line-height: 1; transition: background .2s; }
+.sq.w { color: #FBFAF6; -webkit-text-stroke: 1.2px #141414; } .sq.b { color: #141414; }
+.files { margin-top: 8px; display: grid; grid-template-columns: repeat(8, minmax(0,1fr)); font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: center; }
+.choice { min-height: 52px; min-width: 104px; padding: 0 18px; border-radius: 12px; border: 1px solid var(--line-2); background: var(--card); font-family: var(--mono); font-size: 18px; font-weight: 700; transition: transform .12s, border-color .15s; }
+.choice:hover:not(:disabled) { border-color: #4A5A53; }
+.choice:active:not(:disabled) { transform: scale(.97); }
+.choice:disabled { cursor: default; }
+.choice.good { background: #1C3555; border-color: var(--blue); } .choice.bad { background: #4A2A14; border-color: var(--orange); }
+.verdict { padding: 16px 18px; border-radius: 14px; background: var(--card); }
+.verdict.good { background: #14223A; } .verdict.bad { background: #2A1D13; }
+.qrow { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); font-size: 14px; }
+.grid2 { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(100%, 460px), 1fr)); gap: 20px; }
+.hist { height: 150px; display: flex; align-items: flex-end; gap: 6px; }
+.hist > div { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.hist .b { width: 100%; border-radius: 4px 4px 0 0; background: #3A4A43; }
+.heat { min-width: 620px; display: flex; flex-direction: column; gap: 4px; }
+.heat .r { display: grid; grid-template-columns: 36px repeat(8, minmax(0,1fr)); gap: 4px; }
+.heat .h { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: center; }
+.heat .c { height: 40px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 12px; }
+.empty { padding: 40px; text-align: center; color: var(--muted); }
+</style>
+</head>
+<body>
+<header>
+  <div class="wrap top">
+    <div class="brand"><b>teachess</b><span id="host"></span></div>
+    <nav aria-label="Secciones" id="tabs"></nav>
+    <div class="right">
+      <div class="pill" id="pill"><span class="dot off"></span><span>Cargando…</span></div>
+      <div class="who" id="who"></div>
+    </div>
+  </div>
+</header>
+<main class="wrap">
+  <div id="toast"></div>
+  <div id="view"><p class="empty">Cargando tus partidas…</p></div>
+</main>
+<script>
+const TABS = [['ahora', 'Ahora'], ['repertorio', 'Repertorio'], ['errores', 'Tus errores'], ['ritmo', 'Ritmo']];
+const DEFAULT_PATH = { white: ['e4', 'e5', 'Nf3', 'Nc6'], black: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'] };
+const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
+
+const S = {
+  tab: TABS.some(t => t[0] === location.hash.slice(1)) ? location.hash.slice(1) : 'ahora',
+  state: null, insights: null, version: null, drill: null, answer: null, picked: null,
+  side: 'white', path: null, branch: null, dismissed: false, lastSeen: null, toast: null, lastJson: ''
+};
+
+const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+const pct = x => x == null ? '—' : String(x).replace('.', ',');
+const colorFor = p => p >= 52 ? 'var(--blue)' : p <= 47 ? 'var(--orange)' : '#B8C4BD';
+const mmss = s => s == null ? '—' : `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
+const moveLabel = ply => `${Math.floor(ply / 2) + 1}${ply % 2 === 0 ? '.' : '...'}`;
+const hhmm = iso => new Date(iso).toLocaleTimeString('es-ES', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' });
+async function j(url, opts) { const r = await fetch(url, opts); if (!r.ok) throw new Error(await r.text()); return r.json(); }
+
+// --- data -------------------------------------------------------------------------------------
+async function load() {
+  try {
+    const st = await j('/api/state');
+    const url = st.latest && st.latest.url;
+    if (S.lastSeen && url && url !== S.lastSeen) { S.toast = st.latest; S.dismissed = false; }
+    S.lastSeen = url || S.lastSeen;
+    S.state = st;
+    if (st.version !== S.version) {
+      S.insights = await j('/api/insights');
+      S.version = st.version;
+      if (S.tab === 'errores' && !S.answer) S.drill = await j('/api/drill');
+    }
+    const snapshot = JSON.stringify([st.today, st.games, st.rating, S.version]);
+    if (snapshot !== S.lastJson) { S.lastJson = snapshot; render(); }
+    renderPill();
+  } catch (e) {
+    document.getElementById('pill').innerHTML = '<span class="dot err"></span><span>El panel no responde: ¿sigue abierto teachess dash?</span>';
+  }
+}
+
+function setTab(id) {
+  S.tab = id;
+  history.replaceState(null, '', '#' + id);
+  if (id === 'errores' && !S.drill) j('/api/drill').then(d => { S.drill = d; render(); });
+  render();
+}
+
+// --- chrome -----------------------------------------------------------------------------------
+function renderPill() {
+  const w = S.state && S.state.watcher;
+  if (!w) return;
+  let dot = 'dot', text;
+  if (w.replay) { dot += ' off'; text = `Repetición: ${new Date(w.replay).toLocaleString('es-ES', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Madrid' })}`; }
+  else if (!w.live) { dot += ' off'; text = 'Sin conexión con chess.com (--offline)'; }
+  else if (w.syncing) { dot += ' sync'; text = 'Mirando chess.com…'; }
+  else if (w.error) { dot += ' err'; text = 'chess.com no responde · reintentando'; }
+  else {
+    const ago = w.last_check ? Math.max(0, Math.round(Date.now() / 1000 - w.last_check)) : null;
+    text = `En directo · mira chess.com cada ${w.interval / 60} min` + (ago != null ? ` · hace ${ago < 60 ? ago + ' s' : Math.round(ago / 60) + ' min'}` : '');
+  }
+  document.getElementById('pill').innerHTML = `<span class="${dot}" aria-hidden="true"></span><span>${esc(text)}</span>`;
+}
+
+function renderChrome() {
+  document.getElementById('host').textContent = location.host;
+  document.getElementById('tabs').innerHTML = TABS.map(([id, label]) =>
+    `<button class="tab" data-tab="${id}" ${id === S.tab ? 'aria-current="page"' : ''}>${label}</button>`).join('');
+  const st = S.state;
+  if (st) document.getElementById('who').innerHTML = `<b>${esc(st.user)}</b> · rapid <span class="mono" style="color:var(--text)">${esc(st.rating.now)}</span>`;
+  const t = S.toast, box = document.getElementById('toast');
+  if (box.dataset.url === (t ? t.url : '')) return;  // keep the banner still across re-renders
+  box.dataset.url = t ? t.url : '';
+  box.innerHTML = t ? `<div class="toast" role="status"><span class="tag">NUEVA</span>
+    <span>Partida nueva: ${esc(t.result.toLowerCase())} con ${esc(t.side)} contra ${esc(t.opp)} (${esc(t.opp_rating)}). ${esc(t.review.verdict)}</span>
+    <button data-act="close-toast">Cerrar</button></div>` : '';
+}
+
+function render() {
+  renderChrome();
+  if (!S.state) return;
+  if (!S.state.games.length) {
+    document.getElementById('view').innerHTML = `<div class="card empty"><h2 style="color:var(--text)">Descargando tus partidas de chess.com…</h2>
+      <p style="margin-top:8px">La primera vez se baja todo tu archivo y Stockfish revisa un año de aperturas: tarda unos minutos. El panel se rellena solo.</p></div>`;
+    return;
+  }
+  const view = { ahora: viewNow, repertorio: viewRep, errores: viewDrill, ritmo: viewRhythm }[S.tab];
+  document.getElementById('view').innerHTML = view();
+}
+
+// --- Ahora ------------------------------------------------------------------------------------
+function hero() {
+  const st = S.state, t = st.today, last = st.latest;
+  const ago = t.minutes_since_last;
+  const agoText = ago == null ? '' : ago < 1 ? 'Ahora mismo' : ago < 60 ? `Hace ${ago} min` : `Hace ${Math.round(ago / 60)} h`;
+  const link = last ? `<a class="btn ghost" href="${esc(last.url)}" target="_blank" rel="noopener">Ver la partida</a>` : '';
+  const review = `<button class="btn ghost" data-tab="errores">Repasar mis errores</button>`;
+  const stop = S.dismissed ? `<span class="muted">Bien. Vuelve dentro de 45 minutos.</span>` :
+    `<button class="btn" style="background:var(--orange)" data-act="dismiss">Vale, lo dejo</button>${review}`;
+  if (t.state === 'streak') return { bg: '#2A1D13', kc: 'var(--orange)', kicker: `Son las ${hhmm(t.at)} · sesión de ${t.band}`,
+    title: `Llevas ${t.losses_in_a_row} derrotas seguidas. Para aquí.`,
+    body: `Cuando empiezas otra partida menos de 45 minutos después de perder, sacas el ${pct(t.score_after_loss)} % de los puntos. Después de ganar, el ${pct(t.score_after_win)} %.`,
+    meter: Math.min(3, t.losses_in_a_row), meterText: `${t.losses_in_a_row} derrotas seguidas`, actions: stop };
+  if (t.state === 'loss') return { bg: '#2A1D13', kc: 'var(--orange)', kicker: `${agoText} · sesión de ${t.band}`,
+    title: `Acabas de perder con ${last.side}.`,
+    body: `${last.review.verdict} Respira antes de la siguiente: después de perder sacas el ${pct(t.score_after_loss)} % de los puntos.`,
+    meter: 1, meterText: '1 derrota', actions: link + review };
+  if (t.state === 'win' || t.state === 'draw') {
+    const won = t.state === 'win';
+    return { bg: '#14223A', kc: 'var(--blue)', kicker: `${agoText} · sesión de ${t.band}`,
+      title: won ? (last.acc ? `Ganaste con ${last.side}. Precisión ${last.acc}.` : `Ganaste con ${last.side}.`) : `Tablas con ${last.side}.`,
+      body: `${last.opening} contra un ${last.opp_rating}. ${last.review.verdict}`,
+      meter: 0, meterText: 'Sin racha de derrotas', actions: link.replace('btn ghost', 'btn" style="background:var(--blue)') + review };
+  }
+  return { bg: '#17211C', kc: 'var(--amber)', kicker: `Son las ${hhmm(t.at)} · ${t.band}`,
+    title: 'Sin partidas en la última hora.',
+    body: `${t.advice} ${last ? `Tu última partida: ${last.when}, ${last.result.toLowerCase()} con ${last.side} (${last.opening}).` : ''}`,
+    meter: null, actions: `<button class="btn" style="background:var(--amber)" data-tab="errores">Repasar mis errores</button><button class="btn ghost" data-tab="repertorio">Ver mi repertorio</button>` };
+}
+
+function viewNow() {
+  const st = S.state, h = hero();
+  const meter = h.meter == null ? '' : `<div class="meter"><div class="seg" role="img" aria-label="${esc(h.meterText)}">${[0, 1, 2].map(i =>
+    `<span style="${i < h.meter ? 'background:var(--orange)' : ''}"></span>`).join('')}</div><span>${esc(h.meterText)}</span></div>`;
+  const games = st.games.map(g => `<a class="game" href="${esc(g.url)}" target="_blank" rel="noopener">
+      <span class="t">${esc(g.when)}</span>
+      <span class="chip ${g.score === 1 ? 'win' : g.score === 0 ? 'loss' : 'draw'}">${esc(g.result)}</span>
+      <span class="ellip">${esc(g.opening)} <span class="muted">· ${esc(g.side)} · ${esc(g.how)}</span></span>
+      <span class="t opp">vs ${esc(g.opp_rating)}</span></a>`).join('');
+  const ctx = st.context.filter(c => c.score != null).map(c => `<div>
+      <div style="display:flex;justify-content:space-between;font-size:13px"><span style="color:${c.now ? 'var(--amber)' : 'var(--text)'}">${esc(c.label)}</span><span class="mono">${pct(c.score)} %</span></div>
+      <div class="bar"><div style="width:${c.score}%;background:${c.score >= 52 ? 'var(--blue)' : c.score <= 47.5 ? 'var(--orange)' : '#6F7D76'}"></div></div></div>`).join('');
+  return `<div class="row">
+    <section class="main-col">
+      <div class="hero" style="background:${h.bg}">
+        <p class="kicker" style="color:${h.kc}">${esc(h.kicker)}</p>
+        <h1>${esc(h.title)}</h1>
+        <p class="body">${esc(h.body)}</p>
+        ${meter}
+        <div class="actions">${h.actions}</div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px"><h2>Tus últimas partidas</h2><span class="muted" style="font-size:12px">rapid · clic para abrir en chess.com</span></div>
+        <div class="games">${games || '<p class="muted">Aún no hay partidas.</p>'}</div>
+      </div>
+    </section>
+    <aside class="side-col">
+      <div class="card">
+        <p class="muted" style="font-size:13px">Elo rapid ahora</p>
+        <p class="big" style="font-size:44px;margin-top:2px">${esc(st.rating.now)}</p>
+        <p class="muted" style="font-size:13px;margin-top:4px">Tu máximo: ${esc(st.rating.best)} (${esc(st.rating.best_date)})</p>
+      </div>
+      <div class="card" style="display:flex;flex-direction:column;gap:14px">
+        <h2 style="font-size:15px">Cómo juegas según el momento</h2>
+        ${ctx}
+        <p class="muted" style="font-size:12px">% de puntos en tus ${esc((st.recent || 0).toLocaleString('es-ES'))} partidas de rapid del último año.</p>
+      </div>
+    </aside>
+  </div>`;
+}
+
+// --- Repertorio -------------------------------------------------------------------------------
+function nodeAt(color, path) {
+  let node = S.insights.tree[color];
+  for (const s of path) { node = node && node.k.find(k => k.s === s); }
+  return node;
+}
+
+function currentPath() {
+  if (!S.path) S.path = { white: DEFAULT_PATH.white, black: DEFAULT_PATH.black };
+  for (const c of ['white', 'black']) if (!nodeAt(c, S.path[c])) S.path[c] = [];
+  return S.path[S.side];
+}
+
+function viewRep() {
+  if (!S.insights) return '<p class="empty">Cargando…</p>';
+  const side = S.side, path = currentPath(), node = nodeAt(side, path), L = path.length;
+  const mine = (side === 'white') === (L % 2 === 0);
+  const kids = node.k;
+  const names = S.insights.names[side] || {};
+  const parentName = names[path.join(' ')];
+  const maxN = Math.max(1, ...kids.map(k => k.n));
+  const solid = kids.filter(k => k.n >= 15);
+  const best = solid.length ? solid.reduce((a, b) => (b.p > a.p ? b : a)) : null;
+  const picked = kids.find(k => k.s === S.branch) || kids[0];
+  // Coach's notes from config.json, keyed by colour and line.
+  const note = (S.insights.advice || {})[`${side}|${path.join(' ')}`];
+  const label = s => moveLabel(L) + s;
+  const crumbs = [`<button data-depth="0">Inicio</button>`].concat(path.map((s, i) =>
+    `<button data-depth="${i + 1}">${i % 2 === 0 ? moveLabel(i) : ''}${esc(s)}</button>`)).join('');
+  if (!picked) return `<section class="card" style="padding:26px"><div class="path" style="margin-top:0">${crumbs}</div>
+    <p class="muted" style="margin-top:18px">Aquí se acaba lo analizado: menos de 4 partidas siguen por esta línea.</p></section>`;
+  const rows = kids.map(k => {
+    const nm = names[[...path, k.s].join(' ')];
+    const showName = nm && nm !== parentName ? `${esc(nm)} · ` : '';
+    return `<button class="branch" data-branch="${esc(k.s)}" aria-pressed="${k === picked}">
+      <span class="san">${esc(label(k.s))}</span>
+      <span style="display:flex;flex-direction:column;gap:6px;min-width:0">
+        <span style="font-size:13px;color:#B8C4BD">${showName}${k.n} partidas</span>
+        <span style="height:8px;border-radius:4px;background:var(--line)"><span style="display:block;height:8px;border-radius:4px;width:${Math.round(100 * k.n / maxN)}%;background:${colorFor(k.p)}"></span></span>
+      </span>
+      <span class="pct" style="color:${colorFor(k.p)}">${k.p}%</span></button>`;
+  }).join('');
+  let title, body = `Un ${pct(picked.p)} % de los puntos en ${picked.n} partidas.`;
+  if (!mine) title = 'Respuesta de tu rival';
+  else if (note && note.move === picked.s) title = 'La línea recomendada';
+  else if (best && picked === best) title = side === 'white' && L === 4 ? 'Tu mejor línea' : 'Tu mejor opción aquí';
+  else if (picked.n < 15) title = 'Pocas partidas';
+  else if (picked.p <= 47) title = 'Aquí pierdes puntos';
+  else title = 'Una línea correcta';
+  if (!mine) body = `Cuando juega ${label(picked.s)}, sacas un ${pct(picked.p)} % de los puntos (${picked.n} partidas).`;
+  if (picked.e != null) body += ` Stockfish la deja en ${picked.e >= 0 ? '+' : '−'}${(Math.abs(picked.e) / 100).toFixed(1).replace('.', ',')} para ti.`;
+  const advice = (note && note.text) || (mine && best ? `Tu mejor opción aquí es ${label(best.s)}: ${best.p} % en ${best.n} partidas.` : 'Aquí decide tu rival. Elige una rama para ver cómo te va.');
+  const deeper = picked.k.length ? `<button class="btn ghost" style="margin-top:16px" data-descend="${esc(picked.s)}">Ver lo que viene después →</button>` : '';
+  return `<div class="row">
+    <section class="main-col card" style="padding:26px">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;align-items:center;gap:12px">
+        <h1 style="font-size:26px;letter-spacing:-0.01em">Tu repertorio, jugada a jugada</h1>
+        <div class="seg-ctl" role="group" aria-label="Color">
+          <button data-side="white" aria-pressed="${side === 'white'}">Con blancas</button>
+          <button data-side="black" aria-pressed="${side === 'black'}">Con negras</button>
+        </div>
+      </div>
+      <div class="path">${crumbs}<span class="ask">${moveLabel(L)} ?</span></div>
+      <div class="branches">${rows || '<p class="muted">No hay más partidas por esta línea.</p>'}</div>
+      <p class="muted" style="margin-top:16px;font-size:12px">Barra = cuántas veces sale. Color = % de puntos: azul, por encima del 52 %; naranja, por debajo del 47 %. Rapid desde ${esc(S.insights.since)}.</p>
+    </section>
+    <aside class="side-col card" style="padding:24px;background:var(--card-2)">
+      <p class="kicker" style="color:var(--amber)">${esc(label(picked.s))}${names[[...path, picked.s].join(' ')] ? ' · ' + esc(names[[...path, picked.s].join(' ')]) : ''}</p>
+      <h2 style="margin-top:8px;font-size:22px;line-height:1.2">${esc(title)}</h2>
+      <p style="margin-top:10px;color:var(--soft)">${esc(body)}</p>
+      ${deeper}
+      <div style="margin-top:20px;padding:14px 16px;border-radius:12px;background:var(--ground)">
+        <p class="muted" style="font-size:12px">Recomendación</p>
+        <p style="margin-top:4px;font-weight:600">${esc(advice)}</p>
+      </div>
+    </aside>
+  </div>`;
+}
+
+// --- Tus errores ------------------------------------------------------------------------------
+function boardHtml(fen, flip, lit) {
+  const rows = fen.split(' ')[0].split('/');
+  const squares = [];
+  rows.forEach((row, ri) => {
+    let fi = 0;
+    for (const ch of row) {
+      const run = /\d/.test(ch) ? +ch : 1;
+      for (let i = 0; i < run; i++, fi++) {
+        const name = 'abcdefgh'[fi] + (8 - ri), light = (ri + fi) % 2 === 0, piece = /\d/.test(ch) ? null : ch;
+        const hi = lit.includes(name);
+        const bg = hi ? (light ? '#F1D886' : '#D6B65A') : (light ? '#D7DED9' : '#71857B');
+        const cls = piece ? (piece === piece.toUpperCase() ? 'w' : 'b') : '';
+        squares.push(`<div class="sq ${cls}" style="background:${bg}">${piece ? GLYPH[piece.toLowerCase()] + '︎' : ''}</div>`);
+      }
+    }
+  });
+  if (flip) squares.reverse();
+  const files = (flip ? 'hgfedcba' : 'abcdefgh').split('').map(f => `<span>${f}</span>`).join('');
+  return `<div class="board" role="img" aria-label="Posición del tablero">${squares.join('')}</div><div class="files">${files}</div>`;
+}
+
+function viewDrill() {
+  const d = S.drill;
+  if (!d) return '<p class="empty">Preparando tus tarjetas…</p>';
+  if (!d.card) return `<div class="card empty"><h2 style="color:var(--text)">Nada pendiente hoy.</h2>
+    <p style="margin-top:8px">${d.stats.learned} de ${d.stats.total} tarjetas aprendidas. Vuelve mañana.</p></div>`;
+  const c = d.card, a = S.answer;
+  const lit = S.picked ? [S.picked.from, S.picked.to] : [];
+  const choices = c.choices.map(ch => {
+    let cls = '';
+    if (a) cls = ch.san === a.best ? 'good' : ch.san === S.picked.san ? 'bad' : '';
+    return `<button class="choice ${cls}" data-pick="${esc(ch.san)}" ${a ? 'disabled' : ''} aria-pressed="${S.picked && S.picked.san === ch.san}">${esc(ch.label)}</button>`;
+  }).join('');
+  const verdict = a ? `<div class="verdict ${a.tone}" role="status"><p style="font-weight:700;color:${a.tone === 'good' ? 'var(--blue)' : 'var(--orange)'}">${esc(a.title)}</p><p style="margin-top:4px;color:var(--soft)">${esc(a.body)}</p></div>
+      <div><button class="btn" style="background:var(--amber)" data-act="next">Siguiente tarjeta</button></div>`
+    : `<div class="verdict" role="status"><p style="font-weight:700">Elige una jugada</p><p style="margin-top:4px;color:var(--soft)">La tarjeta vuelve mañana si fallas, y más adelante cuanto más la aciertes.</p></div>`;
+  const queue = d.queue.map(q => `<div class="qrow"><span style="min-width:0">${esc(q.title)} <span class="muted">· ${esc(q.line)}</span></span><span class="mono" style="font-size:12px;color:var(--orange)">${esc(q.times)}</span></div>`).join('');
+  return `<div class="row">
+    <section style="flex:1 1 380px;min-width:0;max-width:480px">${boardHtml(c.fen, c.color === 'black', lit)}</section>
+    <section class="main-col" style="flex:999 1 420px;gap:18px">
+      <div>
+        <p class="kicker" style="color:var(--amber)">Tarjeta ${c.n} de ${d.stats.total} · ${esc(c.opening)} con ${esc(c.side)} · ${d.stats.due} para hoy</p>
+        <h1 style="margin-top:8px;font-size:clamp(26px,3.4vw,36px);line-height:1.1;letter-spacing:-0.02em">Aquí te has equivocado ${c.times} de las ${c.reached} veces que has llegado.</h1>
+        <p class="mono" style="margin-top:10px;font-size:14px;color:#B8C4BD">${esc(c.line)} — ¿qué juegas?</p>
+      </div>
+      <div role="group" aria-label="Elige tu jugada" style="display:flex;flex-wrap:wrap;gap:10px">${choices}</div>
+      ${verdict}
+      ${queue ? `<div class="card"><h2 style="font-size:15px;margin-bottom:6px">Siguientes en la cola</h2>${queue}</div>` : ''}
+    </section>
+  </div>`;
+}
+
+async function pick(san) {
+  const c = S.drill.card;
+  S.picked = c.choices.find(ch => ch.san === san);
+  render();
+  S.answer = await j('/api/drill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: c.id, san }) });
+  render();
+}
+
+// --- Ritmo ------------------------------------------------------------------------------------
+function viewRhythm() {
+  const ins = S.insights;
+  if (!ins) return '<p class="empty">Cargando…</p>';
+  const m = ins.monthly, vals = m.map(x => x.rating);
+  const lo = Math.floor((Math.min(...vals) - 20) / 50) * 50, hi = Math.ceil((Math.max(...vals) + 20) / 50) * 50;
+  const y = v => Math.round(170 - ((v - lo) / (hi - lo)) * 160);
+  const pts = vals.map((v, i) => `${Math.round(i * 600 / Math.max(1, vals.length - 1))},${y(v)}`).join(' ');
+  const ticks = [0, Math.round((m.length - 1) / 3), Math.round(2 * (m.length - 1) / 3), m.length - 1].map(i => `<span>${esc(m[i].label)}</span>`).join('');
+  const fm = ins.first_mistake, hist = fm.hist || {};
+  const counts = Array.from({ length: 12 }, (_, i) => hist[String(i + 1)] || 0), top = Math.max(1, ...counts);
+  const median = Math.round(fm.median_move || 0);
+  const bars = counts.map((n, i) => `<div><div class="b" style="height:${Math.round(n / top * 120)}px;${i + 1 === median ? 'background:var(--orange)' : ''}"></div><span class="mono muted" style="font-size:11px">${i + 1}</span></div>`).join('');
+  const cellBg = c => c.n < 8 ? '#1A211E' : c.score >= 58 ? '#2F6DC4' : c.score >= 53 ? '#24476F' : c.score >= 48 ? '#2A3530' : c.score >= 43 ? '#6E3A18' : '#B5561C';
+  const heat = ins.heat.map(r => `<div class="r"><span class="mono muted" style="font-size:12px;align-self:center">${r.day}</span>${r.cells.map(c =>
+    `<span class="c" title="${c.n} partidas${c.score != null ? ', ' + c.score + ' % de puntos' : ''}" style="background:${cellBg(c)};color:${c.n < 8 ? '#5E6B64' : '#fff'}">${c.n < 8 ? '·' : c.score + '%'}</span>`).join('')}</div>`).join('');
+  const acc = ins.accuracy || {};
+  return `<div class="grid2">
+    <section class="card">
+      <h2>Elo rapid, últimos ${m.length} meses</h2>
+      <p class="muted" style="margin:2px 0 14px;font-size:13px">De ${vals[0]} en ${esc(m[0].label)} a ${vals[vals.length - 1]} ahora.</p>
+      <svg viewBox="0 0 600 180" role="img" aria-label="Curva de Elo" style="width:100%;height:auto;display:block">
+        <line x1="0" y1="10" x2="600" y2="10" stroke="#222C27"/><line x1="0" y1="90" x2="600" y2="90" stroke="#222C27"/><line x1="0" y1="170" x2="600" y2="170" stroke="#222C27"/>
+        <text x="0" y="24" fill="#9BA8A0" font-size="11" font-family="JetBrains Mono">${hi}</text><text x="0" y="164" fill="#9BA8A0" font-size="11" font-family="JetBrains Mono">${lo}</text>
+        <polyline points="${pts}" fill="none" stroke="#7DB3FF" stroke-width="3" stroke-linejoin="round" stroke-linecap="round"/>
+        <circle cx="600" cy="${y(vals[vals.length - 1])}" r="5" fill="#7DB3FF"/>
+      </svg>
+      <div class="mono muted" style="margin-top:6px;display:flex;justify-content:space-between;font-size:11px">${ticks}</div>
+    </section>
+    <section class="card">
+      <h2>Jugada de tu primer error serio</h2>
+      <p class="muted" style="margin:2px 0 14px;font-size:13px">El ${fm.share_by_move12} % de las partidas lo tiene antes de la jugada 12. La mediana es la jugada ${median}.</p>
+      <div class="hist" role="img" aria-label="Histograma del primer error por jugada">${bars}</div>
+    </section>
+    <section class="card" style="grid-column:1/-1">
+      <div style="display:flex;flex-wrap:wrap;justify-content:space-between;gap:12px;align-items:baseline"><h2>Cuándo juegas y cuándo ganas</h2>
+      <span class="muted" style="font-size:12px">% de puntos por día y franja de 3 horas · gris: menos de 8 partidas</span></div>
+      <div style="margin-top:16px;overflow-x:auto"><div class="heat">
+        <div class="r"><span></span>${['0–3', '3–6', '6–9', '9–12', '12–15', '15–18', '18–21', '21–24'].map(h => `<span class="h">${h}</span>`).join('')}</div>${heat}
+      </div></div>
+    </section>
+    <section class="card">
+      <h2>El reloj cuando pierdes</h2>
+      <p class="big" style="margin-top:14px;font-size:48px;color:var(--orange)">${mmss(ins.clock.loss_median)}</p>
+      <p style="margin-top:4px;color:var(--soft)">te sobran de mediana cuando pierdes una partida de 10 minutos. En el ${ins.clock.over_3min} % de tus derrotas te quedaban 3 minutos o más.</p>
+    </section>
+    <section class="card">
+      <h2>Precisión según chess.com</h2>
+      <div style="margin-top:14px;display:flex;gap:28px;flex-wrap:wrap">
+        <div><p class="muted" style="font-size:13px">Cuando ganas</p><p class="big" style="font-size:40px;margin-top:2px;color:var(--blue)">${Math.round(acc.win || 0)}</p></div>
+        <div><p class="muted" style="font-size:13px">Cuando pierdes</p><p class="big" style="font-size:40px;margin-top:2px;color:var(--orange)">${Math.round(acc.loss || 0)}</p></div>
+      </div>
+      <p class="muted" style="margin-top:10px;font-size:12px">${acc.n || 0} partidas con ese dato.</p>
+    </section>
+  </div>`;
+}
+
+// --- events -----------------------------------------------------------------------------------
+document.addEventListener('click', e => {
+  const el = e.target.closest('button');
+  if (!el) return;
+  const ds = el.dataset;
+  if (ds.tab) return setTab(ds.tab);
+  if (ds.side) { S.side = ds.side; S.branch = null; return render(); }
+  if (ds.branch) { S.branch = ds.branch; return render(); }
+  if (ds.descend) { S.path[S.side] = [...S.path[S.side], ds.descend]; S.branch = null; return render(); }
+  if (ds.depth) { S.path[S.side] = S.path[S.side].slice(0, +ds.depth); S.branch = null; return render(); }
+  if (ds.pick && !S.answer) return pick(ds.pick);
+  if (ds.act === 'next') { S.answer = null; S.picked = null; S.drill = null; j('/api/drill').then(d => { S.drill = d; render(); }); return render(); }
+  if (ds.act === 'dismiss') { S.dismissed = true; return render(); }
+  if (ds.act === 'close-toast') { S.toast = null; return renderChrome(); }
+});
+
+window.addEventListener('hashchange', () => {
+  const id = location.hash.slice(1);
+  if (id !== S.tab && TABS.some(t => t[0] === id)) setTab(id);
+});
+
+load();
+setInterval(load, 15000);
+setInterval(renderPill, 5000);
+if (S.tab === 'errores') j('/api/drill').then(d => { S.drill = d; render(); });
+</script>
+</body>
+</html>

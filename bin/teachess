@@ -1,0 +1,4 @@
+#!/bin/sh
+# Run the teachess CLI with the project's virtualenv, from anywhere.
+ROOT="$(cd "$(dirname "$(readlink -f "$0")")/.." && pwd)"
+PYTHONPATH="$ROOT" exec "$ROOT/.venv/bin/python" -m teachess "$@"

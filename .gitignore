@@ -1,0 +1,19 @@
+.venv/
+__pycache__/
+*.pyc
+.DS_Store
+
+# Your games, evaluations and drill progress
+data/
+
+# Your username and coaching notes (see config.example.json)
+config.json
+
+# The one-off personal coaching report (not part of the tool)
+coach.html
+coach_template.html
+narrative.json
+render_page.py
+
+# Scratch notes
+implementation-notes.md

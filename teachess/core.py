@@ -36,7 +36,6 @@ DATA = ROOT / "data"
 GAMES = DATA / "games.jsonl"
 EVALS = DATA / "evals.json"
 REPORT = DATA / "report.json"
-REANALYSE = DATA / "reanalyse.flag"  # whole games were recovered and still need evaluating
 MADRID = ZoneInfo("Europe/Madrid")
 PLIES = 24
 DEPTH = 12  # depth the original evals.json was built with
@@ -137,14 +136,10 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
             raise Unreachable(f"No llego a chess.com: {e}") from None
 
         parse_games.USER = user
-        if analyse:
-            upgrade_games(fresh)
-        # Set by a recovery of whole games, cleared only once they are analysed (so an interrupted run resumes)
-        pending = analyse and REANALYSE.exists()
         games = load_games()
         known = {g["url"] for g in games}
         new = [r for r in (parse_games.parse(g) for g in fresh) if r and r["url"] not in known]
-        if not new and not pending and (REPORT.exists() or not analyse):
+        if not new and (REPORT.exists() or not analyse):
             return []
         games.extend(new)
         games.sort(key=end_dt)  # by the moment: the ISO text's offset changes with daylight saving time
@@ -155,53 +150,47 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
         new.sort(key=end_dt)
         if analyse:
             since = window_since()
-            # After re-reading whole games, the moves they were missing need evaluating too
-            todo = games if pending else new
-            evaluate_games([g for g in todo if g["time_class"] == tc() and g["end"] >= since], log=log)
+            evaluate_games([g for g in new if g["time_class"] == tc() and g["end"] >= since], log=log)
             rebuild_report()
-            REANALYSE.unlink(missing_ok=True)
         return new
 
 
-def upgrade_games(fresh: list[dict] | None = None) -> bool:
-    """Complete rows cut at 40 plies (older versions) with the whole game re-parsed from the cached archive.
+MOVE_FIELDS = ("sans", "plies", "my_clocks", "opp_clocks")
 
-    Only cut rows change, and their other fields are kept when the cache lacks them. A cut row whose game is not
-    in the cache is marked and retried only when a fresh download brings it. Recovering any game sets the
-    REANALYSE flag, so the next sync evaluates the window until it succeeds."""
+
+def upgrade_games() -> int:
+    """Complete the rows that older versions cut at 40 plies with the whole game from the cached archive.
+
+    Run by `teachess setup`, never by sync: it is a one-off for archives made before whole games were kept.
+    Only cut rows change: their moves come from the cache, every other field the old row had is kept. A cut
+    row that never ends up "complete" is harmless, since a game shorter than its plies is never called
+    complete. Returns how many rows were completed."""
     with _lock:
         games = load_games()
-        cut = [g for g in games if len(g["sans"]) < g["plies"]]
+        cut = {g["url"] for g in games if len(g["sans"]) < g["plies"]}
         if not cut:
-            return False
+            return 0
         parse_games.USER = parse_games.USER or config.chess_user()
-        fresh_urls = {raw.get("url") for raw in fresh or []}
-        targets = {g["url"] for g in cut if not g.get("cut") or g["url"] in fresh_urls}
-        if not targets:
-            return False
         whole = {}
         for f in sorted(fetch_games.RAW.glob("*.json")):
             for raw in json.loads(f.read_text())["games"]:
-                if raw.get("url") in targets:
+                if raw.get("url") in cut:
                     r = parse_games.parse(raw)
                     if r:
                         whole[r["url"]] = r
-        merged, recovered = [], 0
+        if not whole:
+            return 0
+        merged = []
         for g in games:
-            if g["url"] not in targets:
-                merged.append(g)
-            elif g["url"] in whole:
-                kept = {k: v for k, v in g.items() if k != "cut"}
-                merged.append({**kept, **{k: v for k, v in whole[g["url"]].items() if v is not None}})
-                recovered += 1
-            else:
-                merged.append({**g, "cut": True})
-        with open(GAMES, "w") as f:
+            w = whole.get(g["url"])
+            merged.append(g if not w else {**w, **{k: v for k, v in g.items()
+                                                   if k not in MOVE_FIELDS and v not in (None, "", [])}})
+        tmp = GAMES.with_suffix(".tmp")
+        with open(tmp, "w") as f:
             for g in merged:
                 f.write(json.dumps(g) + "\n")
-        if recovered:
-            REANALYSE.touch()
-        return recovered > 0
+        tmp.replace(GAMES)
+        return len(whole)
 
 
 def rebuild_report() -> None:

@@ -108,10 +108,12 @@ def run(window: str | None = None, time_class: str | None = None, interactive: b
     """Fetch the archive, pick the window (asked, given or recommended), save it and analyse it."""
     if window and window not in core.WINDOWS:
         raise UsageError(f"Ventana desconocida: {window}. Usa una de {', '.join(core.WINDOWS)}.")
+    if not shutil.which("stockfish"):
+        raise SetupError("Stockfish no está instalado (brew install stockfish o apt install stockfish).")
     log("Descargando tus partidas de chess.com (la primera vez, mes a mes)…")
     core.sync(log=log, analyse=False)
-    if core.upgrade_games():
-        log("Partidas releídas enteras (antes se guardaban solo las 20 primeras jugadas).")
+    if n := core.upgrade_games():
+        log(f"{n} partidas releídas enteras (antes se guardaban solo las 20 primeras jugadas).")
     games = core.load_games()
     if not games:
         raise SetupError("No hay partidas en tu archivo de chess.com.")
@@ -130,7 +132,6 @@ def run(window: str | None = None, time_class: str | None = None, interactive: b
     start = time.monotonic()
     core.evaluate_games(gs, log=log)
     core.rebuild_report()
-    core.REANALYSE.unlink(missing_ok=True)
     report = core.load_report()
     return {"window": window, "time_class": o["time_class"], "games": len(gs), "since": since,
             "minutes": round((time.monotonic() - start) / 60, 1),

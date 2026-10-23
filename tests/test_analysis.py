@@ -85,14 +85,13 @@ tiny = setup.options(games({"rapid": 15}, 10), measure=False)
 expect("tiny archive: not asked", tiny["ask"], False)
 expect("tiny archive: everything", tiny["recommended"], tiny["options"][-1]["window"])
 
-# --- re-reading cut rows merges: a game missing from the cache is kept, marked, and not retried ---
+# --- setup's re-read of cut rows: only cut rows change, old fields survive --------------------
 import json  # noqa: E402
 import tempfile  # noqa: E402
-from teachess import core as core_mod  # noqa: E402
 import fetch_games  # noqa: E402
 import parse_games  # noqa: E402
 tmp = pathlib.Path(tempfile.mkdtemp())
-core_mod.GAMES, fetch_games.RAW = tmp / "games.jsonl", tmp / "raw"
+core.GAMES, fetch_games.RAW = tmp / "games.jsonl", tmp / "raw"
 fetch_games.RAW.mkdir()
 parse_games.USER = "me"
 pgn = '[Event "x"]\n\n1. e4 e5 2. Nf3 Nc6 3. Bb5 a6 *'
@@ -100,25 +99,21 @@ raw = {"url": "u1", "pgn": pgn, "rules": "chess", "end_time": 1760000000, "time_
        "time_control": "600", "white": {"username": "me", "rating": 1, "result": "win"},
        "black": {"username": "x", "rating": 1, "result": "resigned"}}
 (fetch_games.RAW / "2026-10.json").write_text(json.dumps({"games": [raw]}))
-core_mod.REANALYSE = tmp / "reanalyse.flag"
-rows = [{"url": "u1", "end": "2026-10-09T10:00:00+02:00", "sans": ["e4"], "plies": 6, "my_acc": 98.5},
+rows = [{"url": "u1", "end": "2026-10-09T10:00:00+02:00", "sans": ["e4"], "plies": 6, "my_acc": 98.5,
+         "eco": "C60"},
         {"url": "gone", "end": "2026-10-10T10:00:00+02:00", "sans": ["d4"], "plies": 30},
         {"url": "whole", "end": "2026-10-11T10:00:00+02:00", "sans": ["c4"], "plies": 1, "my_acc": 77.0}]
-core_mod.GAMES.write_text("".join(json.dumps(r) + "\n" for r in rows))
-core_mod.load_games = lambda: [json.loads(line) for line in core_mod.GAMES.read_text().splitlines()]
-expect("recovered a cut game", core_mod.upgrade_games(), True)
-after = {g["url"]: g for g in core_mod.load_games()}
+core.GAMES.write_text("".join(json.dumps(r) + "\n" for r in rows))
+real_load_games = core.load_games
+core.load_games = lambda: [json.loads(line) for line in core.GAMES.read_text().splitlines()]
+expect("one cut row completed", core.upgrade_games(), 1)
+after = {g["url"]: g for g in core.load_games()}
 expect("whole game now", len(after["u1"]["sans"]), 6)
-expect("game missing from cache kept", "gone" in after, True)
-expect("and marked", after["gone"].get("cut"), True)
-expect("fields the cache lacks are kept", after["u1"]["my_acc"], 98.5)
-expect("complete rows untouched", after["whole"]["my_acc"], 77.0)
-expect("re-analysis flagged", core_mod.REANALYSE.exists(), True)
-expect("no retry next time", core_mod.upgrade_games(), False)
-back = {**raw, "url": "gone"}  # sync writes a fresh month to the cache before re-reading
-(fetch_games.RAW / "2026-10.json").write_text(json.dumps({"games": [raw, back]}))
-expect("a fresh download brings it back", core_mod.upgrade_games([back]), True)
-expect("no longer marked", any(g.get("cut") for g in core_mod.load_games()), False)
+expect("fields the cache lacks are kept", (after["u1"]["my_acc"], after["u1"]["eco"]), (98.5, "C60"))
+expect("game missing from cache kept as it was", after["gone"], rows[1])
+expect("complete rows untouched", after["whole"], rows[2])
+expect("nothing left to recover", core.upgrade_games(), 0)
+core.load_games = real_load_games
 
 # --- a window with no games is refused before anything is saved --------------------------------
 from teachess.errors import SetupError  # noqa: E402

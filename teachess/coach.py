@@ -60,14 +60,15 @@ def seed_notes() -> str:
             lines.append(f"- Con {core.SIDE.get(color, color)}, tras {core.format_line(line.split())}: {a['text']}")
         lines.append("")
     report = core.load_report()
-    if report:
+    if report and core.rating_now(core.load_games())["now"] is not None:
         p = core.progress(report=report, months=1)
         y, r = p["year"], p["rating"]
         lines += [f"## {date.today().isoformat()} · Punto de partida", "",
                   f"- Elo rapid {r['now']} (mejor {r['best']}, {r['best_date']}).",
                   f"- Último año: {y['games']} partidas, {core.fmt_pct(y['score'])} de los puntos.",
-                  f"- Error serio antes de la jugada 12 en el {y['mistake_by12']} % de las partidas; "
-                  f"el primero llega hacia la jugada {y['median_first_mistake']:g}.",
+                  f"- Error serio antes de la jugada 12 en el {y['mistake_by12']} % de las partidas"
+                  + ("." if y["median_first_mistake"] is None
+                     else f"; el primero llega hacia la jugada {y['median_first_mistake']:g}."),
                   f"- Tras perder sacas el {core.fmt_pct(y['score_after_loss'])}; "
                   f"tras ganar, el {core.fmt_pct(y['score_after_win'])}.", ""]
     return "\n".join(lines)

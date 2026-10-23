@@ -164,14 +164,17 @@ def show_today(t: dict, args) -> None:
 
 def show_progress(p: dict, args) -> None:
     r, y, s = p["rating"], p["year"], p["drills"]
+    if r["now"] is None:
+        return print("Aún no hay partidas rapid: ejecuta teachess sync.")
     print(f"Elo rapid {bold(str(r['now']))}  ·  mejor {r['best']} ({r['best_date']})\n")
     print(dim(f"  {'mes':<8} {'partidas':>8} {'puntos':>7} {'elo':>5}  {'error antes de la 12':>20}  {'primer error':>12}"))
     for m in p["months"]:
         first = "—" if m["median_first_mistake"] is None else f"jugada {m['median_first_mistake']:g}"
         print(f"  {m['label']:<8} {m['games']:>8} {pct_text(m['score']):>7} {m['rating']:>5}  "
               f"{pct_text(m['mistake_by12']):>20}  {first:>12}")
+    first = "" if y["median_first_mistake"] is None else f", primer error hacia la jugada {y['median_first_mistake']:g}"
     print(dim(f"\nÚltimo año: {pct_text(y['score'])} de los puntos, error antes de la jugada 12 en el "
-              f"{pct_text(y['mistake_by12'])}, primer error hacia la jugada {y['median_first_mistake']:g}."))
+              f"{pct_text(y['mistake_by12'])}{first}."))
     print(dim(f"Tarjetas: {s['learned']} aprendidas de {s['total']}, {s['due']} para hoy."))
 
 

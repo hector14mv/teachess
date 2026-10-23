@@ -66,7 +66,7 @@ TOOLS = {
     "review": ("Stockfish over one game's opening: every move that lost 0.8 pawns or more, the better move, "
                "and whether it is a mistake the player keeps repeating.",
                {"game": string("'last' (default), a chess.com game URL or its number")}, [],
-               lambda a: ["review", a.get("game") or "last"]),
+               lambda a: ["review", "--", a.get("game") or "last"]),
     "sync": ("Fetch new games from chess.com, evaluate them with Stockfish and rebuild the report. Returns the "
              "new games. Seconds usually; minutes on the very first run.", {}, [], lambda a: ["sync"]),
     "drill": ("Flashcards due today from the player's repeated opening mistakes: position (fen), the line that "
@@ -100,10 +100,14 @@ def call(name: str, arguments: dict) -> dict:
             parts = ([f"no conozco {', '.join(sorted(unknown))}"] if unknown else []) + \
                     ([f"falta {', '.join(missing)}"] if missing else [])
             raise UsageError(f"Argumentos no válidos para {name}: {'; '.join(parts)}.")
-        args = cli.build_parser().parse_args([*argv(arguments), "--json"])
+        cmd, *rest = argv(arguments)
+        # --json goes before the rest: review ends with "--" so a game id can never be read as an option
+        args = cli.build_parser().parse_args([cmd, "--json", *rest])
         return text(cli.COMMANDS[args.cmd][0](args))
     except TeachessError as e:
         return text(e.envelope(), error=True)
+    except SystemExit:  # argparse's --help and friends must not stop the server
+        return text(UsageError(f"Argumentos no válidos para {name}.").envelope(), error=True)
     except Exception as e:  # a tool failure must not take the server down
         traceback.print_exc()
         return text({"error": {"code": "error", "exit": 1, "message": f"{type(e).__name__}: {e}"}}, error=True)

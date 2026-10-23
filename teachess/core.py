@@ -136,12 +136,11 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
             raise Unreachable(f"No llego a chess.com: {e}") from None
 
         parse_games.USER = user
-        if analyse:
-            upgrade_games()
+        upgraded = upgrade_games() if analyse else False
         games = load_games()
         known = {g["url"] for g in games}
         new = [r for r in (parse_games.parse(g) for g in fresh) if r and r["url"] not in known]
-        if not new and (REPORT.exists() or not analyse):
+        if not new and not upgraded and (REPORT.exists() or not analyse):
             return []
         games.extend(new)
         games.sort(key=end_dt)  # by the moment: the ISO text's offset changes with daylight saving time
@@ -152,20 +151,40 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
         new.sort(key=end_dt)
         if analyse:
             since = window_since()
-            evaluate_games([g for g in new if g["time_class"] == tc() and g["end"] >= since], log=log)
+            # After re-reading whole games, the moves they were missing need evaluating too
+            todo = games if upgraded else new
+            evaluate_games([g for g in todo if g["time_class"] == tc() and g["end"] >= since], log=log)
             rebuild_report()
         return new
 
 
 def upgrade_games() -> bool:
-    """Re-parse the cached archive when games.jsonl still holds rows cut at 40 plies (older versions)."""
-    games = load_games()
-    if not any(len(g["sans"]) < g["plies"] for g in games):
-        return False
-    parse_games.USER = config.chess_user()
+    """Replace rows cut at 40 plies (older versions) with whole games re-parsed from the cached archive.
+
+    A merge, not a rebuild: a row whose game is not in the cache (a month cached before it ended) is kept."""
     with _lock:
-        parse_games.main()
-    return True
+        games = load_games()
+        if not any(len(g["sans"]) < g["plies"] and not g.get("cut") for g in games):
+            return False
+        parse_games.USER = parse_games.USER or config.chess_user()
+        whole = {}
+        for f in sorted(fetch_games.RAW.glob("*.json")):
+            for raw in json.loads(f.read_text())["games"]:
+                r = parse_games.parse(raw)
+                if r:
+                    whole[r["url"]] = r
+        merged, recovered = [], 0
+        for g in games:
+            if g["url"] in whole:
+                recovered += len(g["sans"]) < g["plies"]
+                merged.append(whole[g["url"]])
+            else:
+                # Not in the cache: keep it as it is, marked so the next sync does not try again
+                merged.append({**g, "cut": True} if len(g["sans"]) < g["plies"] else g)
+        with open(GAMES, "w") as f:
+            for g in merged:
+                f.write(json.dumps(g) + "\n")
+        return recovered > 0
 
 
 def rebuild_report() -> None:

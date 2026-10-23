@@ -64,7 +64,7 @@ def seed_notes() -> str:
         p = core.progress(report=report, months=1)
         y, r = p["year"], p["rating"]
         lines += [f"## {date.today().isoformat()} · Punto de partida", "",
-                  f"- Elo rapid {r['now']} (mejor {r['best']}, {r['best_date']}).",
+                  f"- Elo {core.tc()} {r['now']} (mejor {r['best']}, {r['best_date']}).",
                   f"- Último año: {y['games']} partidas, {core.fmt_pct(y['score'])} de los puntos.",
                   f"- Error serio antes de la jugada 12 en el {y['mistake_by12']} % de las partidas"
                   + ("." if y["median_first_mistake"] is None

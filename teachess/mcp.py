@@ -22,9 +22,10 @@ from .errors import SetupError, TeachessError, UsageError
 BIN = core.ROOT / "bin" / "teachess"
 STATUS_TEXT = {"created": "instalado", "updated": "actualizado", "unchanged": "ya estaba instalado"}
 INSTRUCTIONS = """\
-teachess reads the user's own chess.com games, evaluated by Stockfish over the first 12 moves of every rapid
-game of the last year. Text fields (advice, verdict, title, body, opening names) are in Spanish: quote or
-translate them. `score` is the share of points (win 1, draw 1/2). A serious mistake loses 0.8 pawns or more.
+teachess reads the user's own chess.com games, evaluated by Stockfish move by move over the window chosen at
+setup (one time control). Text fields (advice, verdict, title, body, opening names) are in Spanish: quote or
+translate them. `score` is the share of points (win 1, draw 1/2). An opening mistake loses 0.8 pawns in the first 12 moves; a blunder,
+anywhere, throws away 0.3 of the winning chances.
 Ground every claim in a number from a tool. If today.state is "streak", tell the user to stop for 45 minutes
 first. To quiz: show one card from `drill` (its line and position) with its three choices without saying which
 is best, then call `drill_answer` with the move the user picked; never answer for them."""
@@ -51,26 +52,26 @@ TOOLS = {
     "today": ("Where the player stands right now: current session, losing streak, whether to stop, last game.",
               {"at": string("Another moment, ISO date-time in Madrid time, e.g. 2026-10-15T02:47")}, [],
               lambda a: ["today", *flags(a, "at")]),
-    "progress": ("Month by month in rapid: games, share of points, rating, % of games with a serious mistake "
-                 "before move 12 (lower is better) and the median move of the first one (later is better); plus the yearly baseline and drill counters.",
+    "progress": ("Month by month in the coached time control: games, share of points, rating, % of games with a serious mistake "
+                 "before move 12 (lower is better) and the median move of the first one (later is better), blunders per game (lower is better); plus the yearly baseline and drill counters.",
                  {"months": integer("How many months back (default 6)")}, [],
                  lambda a: ["progress", *flags(a, "months")]),
     "games": ("The player's games, newest first.",
               {"since": string("30d, 2w, 3m or a date YYYY-MM-DD (default 30d)"),
-               "tc": string("Time control (default rapid)", [*core.TIME_CLASSES, "all"]),
+               "tc": string("Time control (default: the coached one)", [*core.TIME_CLASSES, "all"]),
                "limit": integer("Maximum games (default 20)")}, [],
               lambda a: ["games", *flags(a, "since", "tc", "limit")]),
     "openings": ("The repertoire of the last year: games, share of points and % with a mistake before move 12.",
                  {"color": string("Which side (default all)", ["white", "black", "all"])}, [],
                  lambda a: ["openings", *flags(a, "color")]),
-    "review": ("Stockfish over one game's opening: every move that lost 0.8 pawns or more, the better move, "
-               "and whether it is a mistake the player keeps repeating.",
+    "review": ("Stockfish over one game: opening mistakes (and whether the player keeps repeating them) and "
+               "blunders anywhere in the game, each with the better move.",
                {"game": string("'last' (default), a chess.com game URL or its number")}, [],
                lambda a: ["review", "--", a.get("game") or "last"]),
     "sync": ("Fetch new games from chess.com, evaluate them with Stockfish and rebuild the report. Returns the "
              "new games. Seconds usually; minutes on the very first run.", {}, [], lambda a: ["sync"]),
-    "drill": ("Flashcards due today from the player's repeated opening mistakes: position (fen), the line that "
-              "led there and three candidate moves.",
+    "drill": ("Cards due today: repeated opening mistakes and puzzles from recent blunders (kind), each with "
+              "its position (fen), the line that led there, a context line and up to three candidate moves.",
               {"limit": integer("Maximum cards (default 10)")}, [], lambda a: ["drill", *flags(a, "limit")]),
     "drill_answer": ("Grade the move the player chose for a flashcard and schedule the card again. Changes the "
                      "saved progress: only call it with the player's own choice.",

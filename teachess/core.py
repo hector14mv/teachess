@@ -81,8 +81,24 @@ def now() -> datetime:
     return datetime.now(MADRID)
 
 
-def since_one_year() -> str:
-    return (date.today() - timedelta(days=365)).isoformat()
+# How much of the history is analysed, chosen per player by `teachess setup` (config.json "analysis")
+WINDOWS = {"3m": 91, "6m": 182, "1y": 365, "2y": 730, "3y": 1095, "all": None}
+DEFAULT_ANALYSIS = {"window": "1y", "time_class": "rapid"}
+
+
+def analysis() -> dict:
+    a = {**DEFAULT_ANALYSIS, **(config.load().get("analysis") or {})}
+    return a if a["window"] in WINDOWS and a["time_class"] in TIME_CLASSES else dict(DEFAULT_ANALYSIS)
+
+
+def tc() -> str:
+    """The time control teachess coaches: the one the player plays most, chosen at setup."""
+    return analysis()["time_class"]
+
+
+def window_since(window: str | None = None) -> str:
+    days = WINDOWS[window or analysis()["window"]]
+    return "0000-00-00" if days is None else (date.today() - timedelta(days=days)).isoformat()
 
 
 def key(board: chess.Board) -> str:
@@ -91,9 +107,9 @@ def key(board: chess.Board) -> str:
 
 # --- sync ------------------------------------------------------------------------------------
 
-def sync(user: str | None = None, log=print) -> list[dict]:
-    """Fetch the current month (and any month not cached yet), merge new games, evaluate their
-    openings and rebuild the report. Returns the newly seen games, oldest first."""
+def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]:
+    """Fetch the current month (and any month not cached yet), merge new games, evaluate them move by
+    move and rebuild the report (analyse=False stops after the merge). Returns the new games, oldest first."""
     try:
         user = user or config.chess_user()
     except SystemExit as e:  # config.py is shared with the root scripts, which exit on a missing user
@@ -123,7 +139,7 @@ def sync(user: str | None = None, log=print) -> list[dict]:
         games = load_games()
         known = {g["url"] for g in games}
         new = [r for r in (parse_games.parse(g) for g in fresh) if r and r["url"] not in known]
-        if not new and REPORT.exists():
+        if not new and (REPORT.exists() or not analyse):
             return []
         games.extend(new)
         games.sort(key=end_dt)  # by the moment: the ISO text's offset changes with daylight saving time
@@ -131,31 +147,42 @@ def sync(user: str | None = None, log=print) -> list[dict]:
             for g in games:
                 f.write(json.dumps(g) + "\n")
 
-        since = since_one_year()
-        evaluate_games([g for g in new if g["time_class"] == "rapid" and g["end"] >= since], log=log)
-        build_report.SINCE = since
-        build_report.main()
-        new.sort(key=lambda g: g["end"])
+        new.sort(key=end_dt)
+        if analyse:
+            since = window_since()
+            evaluate_games([g for g in new if g["time_class"] == tc() and g["end"] >= since], log=log)
+            rebuild_report()
         return new
 
 
-def evaluate_games(games: list[dict], plies: int = PLIES, log=print) -> None:
-    """Add Stockfish evaluations for every opening position of these games that is missing."""
-    evals = load_evals()
-    todo = []
+def rebuild_report() -> None:
+    build_report.SINCE, build_report.TIME_CLASS = window_since(), tc()
+    build_report.main()
+
+
+def positions(games: list[dict], plies: int | None = None) -> set[str]:
+    """Every position of these games (the first `plies` moves, or all of them)."""
+    out = set()
     for g in games:
         board = chess.Board()
-        keys = [key(board)]
+        out.add(key(board))
         for san in g["sans"][:plies]:
             board.push_san(san)
-            keys.append(key(board))
-        todo.extend(k for k in keys if k not in evals and k not in todo)
+            out.add(key(board))
+    return out
+
+
+def evaluate_games(games: list[dict], plies: int | None = None, log=print) -> None:
+    """Add Stockfish evaluations for every position of these games (or their first plies) that is missing."""
+    evals = load_evals()
+    todo = sorted(positions(games, plies) - evals.keys())
     if not todo:
         return
     if len(todo) > BULK:
         # First run or a long break: the parallel batch evaluator is much faster.
         log(f"Stockfish: evaluando {len(todo)} posiciones en paralelo (la primera vez tarda un rato)…")
-        engine_eval.SINCE, engine_eval.PLIES, engine_eval.DEPTH = since_one_year(), plies, DEPTH
+        engine_eval.SINCE, engine_eval.PLIES, engine_eval.DEPTH = window_since(), plies, DEPTH
+        engine_eval.TIME_CLASS = tc()
         engine_eval.main()
         return
     path = shutil.which("stockfish")
@@ -195,8 +222,18 @@ def format_line(sans: list[str]) -> str:
     return " ".join(out)
 
 
+def eval_text(cp: int) -> str:
+    """A player-side evaluation in words or pawns: 'ganada', '+1,2', '−3,0', 'perdida'."""
+    if cp >= 900:
+        return "ganada"
+    if cp <= -900:
+        return "perdida"
+    return ("+" if cp >= 0 else "−") + pawns(cp)
+
+
 def review(g: dict, evals: dict | None = None, report: dict | None = None) -> dict:
-    """Walk the game's opening through the engine and list the player's costly moves."""
+    """The player's costly moves: opening mistakes (first 12 moves, ≥ 0.8 pawns) and blunders anywhere
+    (moves that threw away a big part of the winning chances), with a one-line verdict."""
     evals = load_evals() if evals is None else evals
     report = load_report() if report is None else report
     drills = {(d["fen"].rsplit(" ", 2)[0], d["played"]): d for d in report.get("drills", [])}
@@ -222,18 +259,46 @@ def review(g: dict, evals: dict | None = None, report: dict | None = None) -> di
                 "loss": loss, "line": format_line(g["sans"][:i]),
                 "repeated": d["times"] if d else None, "reached": d["reached"] if d else None,
             })
+    found, complete = build_report.blunders(g, evals)
+    blunders = [{"ply": b["ply"], "move": move_label(b["ply"]) + b["played"], "played": b["played"],
+                 "best": b["best"], "best_move": move_label(b["ply"]) + b["best"], "before": b["before"],
+                 "after": b["after"], "loss": b["loss"], "drop": b["drop"]} for b in found]
     first = mistakes[0] if mistakes else None
+    worst = max(blunders, key=lambda b: b["drop"]) if blunders else None
+
+    parts = []
+    if worst:
+        parts.append(f"Error grave en la jugada {worst['move']}: pasas de {eval_text(worst['before'])} a "
+                     f"{eval_text(worst['after'])}. La buena era {worst['best_move']}.")
     if first and first["repeated"]:
-        verdict = (f"Error en la jugada {first['move']}: el mismo que en {first['repeated']} partidas. "
-                   f"La buena era {first['best_move']}.")
-    elif first:
-        verdict = (f"Primer error serio en la jugada {first['move']} (pierde {pawns(first['loss'])} peones). "
-                   f"La buena era {first['best_move']}.")
-    elif missing:
-        verdict = "Sin evaluación de Stockfish para esta apertura."
-    else:
-        verdict = f"Ningún error serio en las primeras {PLIES // 2} jugadas."
-    return {"url": g["url"], "mistakes": mistakes, "first": first, "verdict": verdict, "unevaluated_moves": missing}
+        parts.append(f"En la apertura, {first['move']} otra vez: el mismo error que en {first['repeated']} partidas."
+                     if worst else f"Error en la jugada {first['move']}: el mismo que en {first['repeated']} "
+                     f"partidas. La buena era {first['best_move']}.")
+    elif first and not worst:
+        parts.append(f"Primer error serio en la jugada {first['move']} (pierde {pawns(first['loss'])} peones). "
+                     f"La buena era {first['best_move']}.")
+    if not parts:
+        final = key(board_after(g))
+        if missing:
+            parts.append("Sin evaluación de Stockfish para esta partida.")
+        elif complete and g["score"] == 0 and final in evals:
+            # Lost without one big blunder: how it ended says more than "no mistakes"
+            how = HOW_LOSS.get(g["how"], g["how"])
+            parts.append(f"Sin errores graves: {how} en la jugada {(g['plies'] + 1) // 2} con la partida "
+                         f"{eval_text(sign * evals[final]['cp'])} según Stockfish.")
+        elif complete:
+            parts.append("Sin errores graves en toda la partida.")
+        else:
+            parts.append(f"Ningún error serio en las primeras {PLIES // 2} jugadas.")
+    return {"url": g["url"], "mistakes": mistakes, "first": first, "blunders": blunders, "worst": worst,
+            "fully_evaluated": complete, "verdict": " ".join(parts), "unevaluated_moves": missing}
+
+
+def board_after(g: dict) -> chess.Board:
+    board = chess.Board()
+    for san in g["sans"]:
+        board.push_san(san)
+    return board
 
 
 def pawns(cp: int) -> str:
@@ -243,7 +308,7 @@ def pawns(cp: int) -> str:
 
 def find_game(games: list[dict], ref: str) -> dict | None:
     if ref in ("last", "ultima", "última"):
-        rapid = [g for g in games if g["time_class"] == "rapid"]
+        rapid = [g for g in games if g["time_class"] == tc()]
         return rapid[-1] if rapid else None
     ref = ref.rstrip("/")
     for g in reversed(games):
@@ -284,7 +349,7 @@ def today(games: list[dict] | None = None, report: dict | None = None, at: datet
     games = load_games() if games is None else games
     report = load_report() if report is None else report
     at = at or now()
-    rapid = [g for g in games if g["time_class"] == "rapid" and end_dt(g) <= at]
+    rapid = [g for g in games if g["time_class"] == tc() and end_dt(g) <= at]
     habits = report.get("habits", {})
     after = habits.get("after", {})
     bands = habits.get("band", {})
@@ -338,7 +403,7 @@ def fmt_pct(x) -> str:
 # --- insights for the dashboard ----------------------------------------------------------------
 
 def rating_now(games: list[dict]) -> dict:
-    rapid = [g for g in games if g["time_class"] == "rapid"]
+    rapid = [g for g in games if g["time_class"] == tc()]
     if not rapid:
         return {"now": None, "best": None, "best_date": None}
     best = max(rapid, key=lambda g: g["my_rating"])
@@ -350,7 +415,7 @@ def rating_now(games: list[dict]) -> dict:
 def monthly_rating(games: list[dict], months: int = 14) -> list[dict]:
     last = {}
     for g in games:
-        if g["time_class"] == "rapid":
+        if g["time_class"] == tc():
             last[g["end"][:7]] = g["my_rating"]
     keys = sorted(last)[-months:]
     return [{"month": k, "label": f"{MONTHS[int(k[5:]) - 1]} {k[2:4]}", "rating": last[k]} for k in keys]
@@ -359,7 +424,7 @@ def monthly_rating(games: list[dict], months: int = 14) -> list[dict]:
 def heatmap(games: list[dict], since: str) -> list[dict]:
     cells = defaultdict(lambda: [0, 0.0])
     for g in games:
-        if g["time_class"] != "rapid" or g["end"] < since:
+        if g["time_class"] != tc() or g["end"] < since:
             continue
         d = end_dt(g)
         c = cells[(d.weekday(), d.hour // 3)]
@@ -375,7 +440,7 @@ def branch_names(games: list[dict], since: str, depth: int = 10) -> dict:
     """Most common opening family of the games that went through each line, per colour."""
     counts = {"white": defaultdict(Counter), "black": defaultdict(Counter)}
     for g in games:
-        if g["time_class"] != "rapid" or g["end"] < since or not g["opening"]:
+        if g["time_class"] != tc() or g["end"] < since or not g["opening"]:
             continue
         fam = build_report.family(g["opening"])
         for n in range(1, min(depth, len(g["sans"])) + 1):
@@ -384,7 +449,8 @@ def branch_names(games: list[dict], since: str, depth: int = 10) -> dict:
 
 
 def progress(games: list[dict] | None = None, report: dict | None = None, months: int = 6) -> dict:
-    """Month by month in rapid: games, points, rating, and how early the first serious mistake comes.
+    """Month by month in the coached time control: games, points, rating, how early the first serious
+    mistake comes and how many blunders a game has.
 
     The yearly figures from the report are the baseline each month is compared against."""
     games = load_games() if games is None else games
@@ -392,12 +458,12 @@ def progress(games: list[dict] | None = None, report: dict | None = None, months
     evals = load_evals()
     by_month = defaultdict(list)
     for g in games:
-        if g["time_class"] == "rapid":
+        if g["time_class"] == tc():
             by_month[g["end"][:7]].append(g)
     rows = []
     for k in sorted(by_month)[-months:]:
         gs = by_month[k]
-        evaluated, firsts = 0, []
+        evaluated, firsts, per_game = 0, [], []
         for g in gs:
             r = review(g, evals, report)
             if r["first"]:
@@ -405,12 +471,15 @@ def progress(games: list[dict] | None = None, report: dict | None = None, months
                 firsts.append(r["first"]["ply"] // 2 + 1)
             elif not r["unevaluated_moves"]:
                 evaluated += 1
+            if r["fully_evaluated"]:
+                per_game.append(len(r["blunders"]))
         rows.append({
             "month": k, "label": f"{MONTHS[int(k[5:]) - 1]} {k[2:4]}", "games": len(gs),
             "score": round(100 * sum(g["score"] for g in gs) / len(gs), 1), "rating": gs[-1]["my_rating"],
             "evaluated": evaluated,
             "mistake_by12": round(100 * len(firsts) / evaluated) if evaluated else None,
             "median_first_mistake": float(statistics.median(firsts)) if firsts else None,
+            "blunders_per_game": round(statistics.mean(per_game), 2) if per_game else None,
         })
     totals, fm = report.get("totals", {}), report.get("first_mistake", {})
     after = report.get("habits", {}).get("after", {})
@@ -419,5 +488,6 @@ def progress(games: list[dict] | None = None, report: dict | None = None, months
         "year": {"since": report.get("since"), "games": totals.get("recent"), "score": totals.get("recent_score"),
                  "mistake_by12": fm.get("share_by_move12"), "median_first_mistake": fm.get("median_move"),
                  "score_after_loss": after.get("tras perder", {}).get("score"),
-                 "score_after_win": after.get("tras ganar", {}).get("score")},
+                 "score_after_win": after.get("tras ganar", {}).get("score"),
+                 "blunders_per_game": report.get("blunders", {}).get("per_game")},
     }

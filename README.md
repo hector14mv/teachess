@@ -2,8 +2,8 @@
 
 **Your chess.com games, from the terminal and in a live dashboard on localhost.**
 
-`teachess` downloads your games from chess.com, runs Stockfish over every opening you have played in the
-last year, and turns the result into a coach: it tells you where your games go wrong, which lines cost you
+`teachess` downloads your games from chess.com, runs Stockfish over every move of the games you choose to
+analyse (the last three months, the last year or everything), and turns the result into a coach: it tells you where your games go wrong, which lines cost you
 points, drills the mistakes you keep repeating, and tells you to stop when you are on a losing streak.
 
 ![The dashboard on a losing night: two defeats in a row, time to stop](docs/screenshots/ahora.png)
@@ -27,7 +27,8 @@ around them:
 | `teachess openings` | Your openings with the share of points and how often you go wrong before move 12 |
 | `teachess review [url\|last]` | Stockfish over one game: every costly move and what you should have played |
 | `teachess progress` | Month by month: rating, points, and how early your first serious mistake comes |
-| `teachess drill` | Spaced-repetition flashcards of your repeated mistakes, in the terminal |
+| `teachess drill` | Spaced-repetition cards: your repeated opening mistakes and puzzles from your own blunders |
+| `teachess setup` | Asks how much of your history to analyse, with options built from your own archive, and analyses it |
 | `teachess sync` | Fetches new games, evaluates them and rebuilds the report |
 | `teachess watch install` | A background service that notifies you when a game ends (its first mistake) and when to stop |
 | `teachess coach` | Creates your coach folder and opens Claude Code in it (see below) |
@@ -114,13 +115,26 @@ python3 -m venv .venv
 .venv/bin/pip install -r requirements.txt
 cp config.example.json config.json            # put your chess.com username in it
 ln -s "$PWD/bin/teachess" ~/.local/bin/teachess   # any directory on your PATH works
-teachess sync
+teachess setup
 teachess dash
 ```
 
-The first `sync` downloads your whole archive and evaluates a year of rapid openings in parallel. Depending
-on how much you play, that can take several minutes. After that, each sync only fetches the current month
-and evaluates the new games.
+`setup` downloads your archive and asks how much of it to analyse. The options are built from your own games:
+the time control you play most, how many games each window holds, and how long Stockfish takes on your
+machine (measured on a sample). It recommends the shortest window with about 300 games, because recent games
+say how you play now; with a small archive it analyses everything without asking.
+
+```
+¿Cuánto historial quieres que analice? Stockfish mira cada jugada.
+
+  1. Últimos 3 meses           480 partidas         ~1 min  ← recomendado
+  2. Último año              1.413 partidas         ~1 min
+  3. Últimos 3 años          2.164 partidas         ~3 min
+  4. Todo (desde 2021)       5.278 partidas         ~8 min
+```
+
+You can change it later (`teachess setup --window all`); agents get the options with `teachess setup --json`
+and pass `--window`. After that, each `sync` only fetches the current month and evaluates the new games.
 
 Instead of `config.json` you can set `TEACHESS_USER=<username>`. `config.json` can also hold your own
 coaching notes for the Repertoire tab, keyed by colour and line (see `config.example.json`). A note's `move` is
@@ -132,7 +146,7 @@ and where Stockfish prefers another move, the card asks for the plan's move inst
 ```
 chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
                         parse_games.py ─▶ data/games.jsonl      (one row per game, your side)
-                        engine_eval.py ─▶ data/evals.json       (Stockfish, depth 12, first 24 plies)
+                        engine_eval.py ─▶ data/evals.json       (Stockfish, depth 12, every move)
                         build_report.py ─▶ data/report.json     (tree, drills, habits)
                                              │
                      teachess (CLI) ◀────────┴────────▶ teachess dash (127.0.0.1 + watcher)
@@ -143,8 +157,10 @@ chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
 - It reads only chess.com's [public data API](https://www.chess.com/news/view/published-data-api). There is
   no login and nothing is written to chess.com. Requests are serial because chess.com rate-limits parallel calls.
 - Everything stays on your machine, in `data/`. The dashboard listens on `127.0.0.1` only.
-- The analysis covers rapid games from the last 365 days. A "mistake" is a move that loses 80 centipawns or
-  more. A drill is a position where you played the same bad move at least three times.
+- The analysis covers the window and time control chosen at setup. An opening "mistake" is a move in the
+  first 12 that loses 80 centipawns or more; a drill is a position where you played the same bad move at least
+  three times. A "blunder", anywhere in the game, is a move that throws away 0.3 of your winning chances (the
+  lichess measure, so going from +9 to +6 does not count); your 40 most recent blunders become puzzles.
 - No dependencies beyond [python-chess](https://python-chess.readthedocs.io/): the server is the standard
   library's `http.server`, the dashboard is one HTML file, and the MCP server is plain JSON-RPC over stdio.
 
@@ -158,7 +174,7 @@ checks, one stop per streak, failed notifications, a corrupt state file, two wat
 
 - The interface and the coaching text are in Spanish for now.
 - chess.com's monthly archive can lag behind a finished game by a few minutes.
-- Stockfish only looks at the opening (the first 24 plies), not the whole game.
+- Stockfish runs at depth 12: strong enough to judge a 1300 game, not to explain a grandmaster's.
 
 ## License
 

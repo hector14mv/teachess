@@ -1,6 +1,6 @@
-"""Evaluate every unique position of the first PLIES plies of recent rapid games with Stockfish.
+"""Evaluate every unique position of the recent games of one time control with Stockfish.
 
-Usage: .venv/bin/python engine_eval.py [since=YYYY-MM-DD] [plies=24] [depth=14]
+Usage: .venv/bin/python engine_eval.py [since=YYYY-MM-DD] [plies=24|all] [depth=14] [time_class=rapid]
 Writes data/evals.json: {fen: {"cp": int (white POV, mate clamped to ±1000), "best": san}}.
 Already-evaluated positions are kept, so reruns only add new games.
 """
@@ -21,8 +21,9 @@ import chess.engine
 ROOT = Path(__file__).parent
 OUT = ROOT / "data" / "evals.json"
 SINCE = "2025-10-15"
-PLIES = 24
+PLIES = 24  # None: every move of the game
 DEPTH = 14
+TIME_CLASS = "rapid"
 
 _engine = None
 
@@ -54,7 +55,7 @@ def main() -> None:
     todo = set()
     for line in open(ROOT / "data" / "games.jsonl"):
         g = json.loads(line)
-        if g["time_class"] != "rapid" or g["end"] < SINCE:
+        if g["time_class"] != TIME_CLASS or g["end"] < SINCE:
             continue
         board = chess.Board()
         todo.add(key(board))
@@ -77,7 +78,9 @@ if __name__ == "__main__":
     if len(sys.argv) > 1:
         SINCE = sys.argv[1]
     if len(sys.argv) > 2:
-        PLIES = int(sys.argv[2])
+        PLIES = None if sys.argv[2] == "all" else int(sys.argv[2])
     if len(sys.argv) > 3:
         DEPTH = int(sys.argv[3])
+    if len(sys.argv) > 4:
+        TIME_CLASS = sys.argv[4]
     main()

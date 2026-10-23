@@ -23,7 +23,8 @@ like a report.
 
 ## How to coach
 
-- One or two concrete things to work on, not ten. Openings first: their games go wrong early.
+- One or two concrete things to work on, not ten: a repeated opening mistake, or the kind of blunder that keeps
+  deciding their games (`review` and `progress` show both).
 - Every claim comes from a number you read in this conversation. If you have not checked it, check it.
 - To practise, quiz them on their own repeated mistakes with `teachess drill --json` and record each answer with
   `teachess drill --answer CARD MOVE --json` (only with the move they chose). One card at a time; do not reveal

@@ -403,7 +403,7 @@ function viewDrill() {
     <section class="main-col" style="flex:999 1 420px;gap:18px">
       <div>
         <p class="kicker" style="color:var(--amber)">Tarjeta ${c.n} de ${d.stats.total} · ${esc(c.opening)} con ${esc(c.side)} · ${d.stats.due} para hoy</p>
-        <h1 style="margin-top:8px;font-size:clamp(26px,3.4vw,36px);line-height:1.1;letter-spacing:-0.02em">Aquí te has equivocado ${c.times} de las ${c.reached} veces que has llegado.</h1>
+        <h1 style="margin-top:8px;font-size:clamp(26px,3.4vw,36px);line-height:1.1;letter-spacing:-0.02em">${esc(c.context)}</h1>
         <p class="mono" style="margin-top:10px;font-size:14px;color:#B8C4BD">${esc(c.line)} — ¿qué juegas?</p>
       </div>
       <div role="group" aria-label="Elige tu jugada" style="display:flex;flex-wrap:wrap;gap:10px">${choices}</div>

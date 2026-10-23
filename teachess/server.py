@@ -46,7 +46,7 @@ class Store:
     def state(self) -> dict:
         with self.lock:
             games = [g for g in self.games if self.at is None or core.end_dt(g) <= self.at]
-            rapid = [g for g in games if g["time_class"] == "rapid"]
+            rapid = [g for g in games if g["time_class"] == core.tc()]
             t = core.today(games, self.report, at=self.at)
             habits = self.report.get("habits", {})
             after = habits.get("after", {})
@@ -72,7 +72,7 @@ class Store:
     def insights(self) -> dict:
         with self.lock:
             if self._insights is None:
-                since = self.report.get("since", core.since_one_year())
+                since = self.report.get("since", core.window_since())
                 habits = self.report.get("habits", {})
                 games = [g for g in self.games if self.at is None or core.end_dt(g) <= self.at]
                 self._insights = {
@@ -93,7 +93,8 @@ class Store:
             card = drills.present(due[0]) if due else None
             nxt = [{"title": f"{c['opening']} con {core.SIDE[c['color']]}",
                     "line": f"{core.move_label(len(c['line']))}{c['played']} → {c['best']}",
-                    "times": f"{c['times']} de {c['reached']}"} for c in due[1:5]]
+                    "times": "puzle" if c.get("kind") == "puzzle" else f"{c['times']} de {c['reached']}"}
+                   for c in due[1:5]]
             return {"card": card, "stats": stats, "queue": nxt}
 
 
@@ -121,7 +122,7 @@ def watch(store: Store, stop: threading.Event) -> None:
                 store.reload()
                 global DISPLAY_NAME
                 DISPLAY_NAME = display_name()  # the first sync is what brings the archive with the real spelling
-                rapid = [g for g in new if g["time_class"] == "rapid"]
+                rapid = [g for g in new if g["time_class"] == core.tc()]
                 if len(new) > 3:
                     print(f"  ▸ {len(new)} partidas nuevas desde la última vez; la más reciente:", flush=True)
                 for g in rapid[-3:] if len(new) <= 3 else rapid[-1:]:

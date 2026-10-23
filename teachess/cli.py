@@ -61,12 +61,17 @@ def pct_text(x) -> str:
 
 def data_sync(args) -> list[dict]:
     log = (lambda *_: None) if args.json else print
+    if "analysis" not in core.config.load() and not args.json and sys.stdin.isatty():
+        # First sync of a new player: ask how much history to analyse instead of assuming a year
+        from . import setup
+        show_setup(setup.run(interactive=True), args)
+        return []
     return [core.describe(g) for g in core.sync(log=log)]
 
 
 def games_in(args) -> list[dict]:
-    return [g for g in core.load_games()
-            if g["end"] >= args.since and (args.tc == "all" or g["time_class"] == args.tc)]
+    tc = args.tc or core.tc()
+    return [g for g in core.load_games() if g["end"] >= args.since and (tc == "all" or g["time_class"] == tc)]
 
 
 def data_games(args) -> list[dict]:
@@ -165,14 +170,18 @@ def show_today(t: dict, args) -> None:
 def show_progress(p: dict, args) -> None:
     r, y, s = p["rating"], p["year"], p["drills"]
     if r["now"] is None:
-        return print("Aún no hay partidas rapid: ejecuta teachess sync.")
-    print(f"Elo rapid {bold(str(r['now']))}  ·  mejor {r['best']} ({r['best_date']})\n")
-    print(dim(f"  {'mes':<8} {'partidas':>8} {'puntos':>7} {'elo':>5}  {'error antes de la 12':>20}  {'primer error':>12}"))
+        return print(f"Aún no hay partidas {core.tc()}: ejecuta teachess sync.")
+    print(f"Elo {core.tc()} {bold(str(r['now']))}  ·  mejor {r['best']} ({r['best_date']})\n")
+    print(dim(f"  {'mes':<8} {'partidas':>8} {'puntos':>7} {'elo':>5}  {'error antes de la 12':>20}  "
+              f"{'primer error':>12}  {'graves/partida':>14}"))
     for m in p["months"]:
         first = "—" if m["median_first_mistake"] is None else f"jugada {m['median_first_mistake']:g}"
+        grave = "—" if m["blunders_per_game"] is None else f"{m['blunders_per_game']:.1f}".replace(".", ",")
         print(f"  {m['label']:<8} {m['games']:>8} {pct_text(m['score']):>7} {m['rating']:>5}  "
-              f"{pct_text(m['mistake_by12']):>20}  {first:>12}")
+              f"{pct_text(m['mistake_by12']):>20}  {first:>12}  {grave:>14}")
     first = "" if y["median_first_mistake"] is None else f", primer error hacia la jugada {y['median_first_mistake']:g}"
+    if y.get("blunders_per_game") is not None:
+        first += f", {y['blunders_per_game']:.1f} errores graves por partida".replace(".", ",")
     print(dim(f"\nÚltimo año: {pct_text(y['score'])} de los puntos, error antes de la jugada 12 en el "
               f"{pct_text(y['mistake_by12'])}{first}."))
     print(dim(f"Tarjetas: {s['learned']} aprendidas de {s['total']}, {s['due']} para hoy."))
@@ -193,11 +202,13 @@ def drill_loop(args) -> None:
         c = drills.present(card)
         board = chess.Board(c["fen"])
         flip = c["color"] == "black"
-        print(bold(f"Tarjeta {c['n']} de {stats['total']} · {c['opening']} con {c['side']}"))
-        print(dim(f"Aquí te has equivocado {c['times']} de las {c['reached']} veces que has llegado."))
+        kind = "Puzle" if c["kind"] == "puzzle" else "Tarjeta"
+        print(bold(f"{kind} {c['n']} de {stats['total']} · {c['opening']} con {c['side']}"))
+        print(dim(c["context"]))
         print(board.unicode(invert_color=True, borders=False, empty_square="·", orientation=not flip))
         print(dim(" ".join("hgfedcba" if flip else "abcdefgh")))
-        print(f"\n{c['line']} — {bold(c['ask'])}")
+        line = c["line"] if len(c["line"]) < 60 else "… " + c["line"][-50:].split(" ", 1)[-1]
+        print(f"\n{line} — {bold(c['ask'])}")
         for i, ch in enumerate(c["choices"], 1):
             print(f"  {i}. {ch['label']}")
         valid = [str(i) for i in range(1, len(c["choices"]) + 1)]
@@ -212,6 +223,28 @@ def drill_loop(args) -> None:
 
 
 # --- actions ----------------------------------------------------------------------------------
+
+def show_setup(r: dict, args) -> None:
+    per = "—" if r["blunders_per_game"] is None else f"{r['blunders_per_game']:.1f}".replace(".", ",")
+    print(blue(bold(f"\nListo: {r['games']} partidas de {r['time_class']} desde {r['since']}.")))
+    print(f"Errores graves por partida: {per}. Tienes {r['drills']} tarjetas de apertura y {r['puzzles']} puzles "
+          f"de tus propios errores: teachess drill.")
+
+
+def cmd_setup(args) -> None:
+    from . import setup
+    if args.json and not args.window:
+        # For agents: the options to show the player; call again with --window to analyse
+        return emit(setup.options(core.load_games() or _fetch_all(), args.time_class))
+    r = setup.run(args.window, args.time_class, interactive=sys.stdin.isatty() and not args.yes,
+                  log=(lambda *_: None) if args.json else print)
+    emit(r) if args.json else show_setup(r, args)
+
+
+def _fetch_all() -> list[dict]:
+    core.sync(log=lambda *_: None, analyse=False)
+    return core.load_games()
+
 
 def cmd_dash(args) -> None:
     from . import server
@@ -323,7 +356,7 @@ def build_parser() -> Parser:
     sp = add("games", "lista tus partidas")
     sp.add_argument("--since", type=parse_since, default="30d",
                     help="30d, 2w, 3m o una fecha AAAA-MM-DD (por defecto 30d)")
-    sp.add_argument("--tc", default="rapid", choices=[*core.TIME_CLASSES, "all"], help="ritmo (por defecto rapid)")
+    sp.add_argument("--tc", choices=[*core.TIME_CLASSES, "all"], help="ritmo (por defecto, el que analizas)")
     sp.add_argument("--limit", type=int, default=20)
     sp = add("openings", "tu repertorio con el %% de puntos por apertura")
     sp.add_argument("--color", default="all", choices=["white", "black", "all"])
@@ -341,6 +374,10 @@ def build_parser() -> Parser:
     sp.add_argument("--no-open", action="store_true", help="no abrir el navegador")
     sp.add_argument("--offline", action="store_true", help="no consultar chess.com")
     sp.add_argument("--at", type=parse_at, help="revive un momento pasado, p. ej. 2026-10-15T02:47 (sin conexión)")
+    sp = add("setup", "elige cuánto historial analizar (con opciones según tus partidas) y lo analiza", cmd_setup)
+    sp.add_argument("--window", choices=list(core.WINDOWS), help="3m, 6m, 1y, 2y, 3y o all; sin ella, te pregunta")
+    sp.add_argument("--time-class", choices=list(core.TIME_CLASSES), help="ritmo; por defecto, el que más juegas")
+    sp.add_argument("--yes", action="store_true", help="sin preguntar: la ventana recomendada")
     sp = add("watch", "te avisa al acabar cada partida y cuando toca parar; «install» lo deja de fondo", cmd_watch)
     sp.add_argument("action", nargs="?", choices=["install", "uninstall", "status"])
     sp.add_argument("--once", action="store_true", help="una sola revisión y sale (lo que ejecuta el servicio)")

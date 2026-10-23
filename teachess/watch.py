@@ -51,7 +51,7 @@ def lesson(g: dict, evals: dict, report: dict, due: int) -> dict:
     d = core.describe(g)
     r = core.review(g, evals, report)
     body = r["verdict"]
-    if r["first"] and r["first"]["repeated"]:
+    if r["worst"] or (r["first"] and r["first"]["repeated"]):
         body += f" Está en tus tarjetas: {due} para hoy."
     return {"type": "game", "title": f"{d['result']} con {d['side']} · {d['opening']}", "body": body,
             "url": g["url"]}
@@ -76,7 +76,7 @@ def check(live: bool = True, at: datetime | None = None, send=notify.send) -> li
 def _check(at: datetime, send) -> list[dict]:
     games, report, evals = core.load_games(), core.load_report(), core.load_evals()
     # Sorted by the moment, not by the ISO text: the offset changes with daylight saving time
-    rapid = sorted((g for g in games if g["time_class"] == "rapid" and core.end_dt(g) <= at), key=core.end_dt)
+    rapid = sorted((g for g in games if g["time_class"] == core.tc() and core.end_dt(g) <= at), key=core.end_dt)
     state = load_state()
     if "last_end" not in state:
         # First run: start from the latest game (or from now) instead of announcing the whole archive

@@ -1,11 +1,12 @@
 """Turn data/games.jsonl + data/evals.json into data/report.json for the coach page.
 
-Usage: .venv/bin/python build_report.py [since=YYYY-MM-DD]
+Usage: .venv/bin/python build_report.py [since=YYYY-MM-DD] [time_class=rapid]
 """
 
 from __future__ import annotations
 
 import json
+import math
 import re
 import statistics as st
 import sys
@@ -17,8 +18,11 @@ import chess
 
 ROOT = Path(__file__).parent
 SINCE = "2025-10-15"
+TIME_CLASS = "rapid"
 PLIES = 24
 MISTAKE_CP = 80  # centipawns lost by one move to count as an opening mistake
+BLUNDER_DROP = 0.3  # as lichess: a move that throws away 0.3 of the winning chances (on a -1..1 scale)
+PUZZLES = 40  # the most recent blunders become puzzle cards
 SESSION_GAP_MIN = 45
 
 ES = {
@@ -74,6 +78,34 @@ def key(board: chess.Board) -> str:
     return " ".join(board.fen().split()[:4])
 
 
+def win_chances(cp: int) -> float:
+    """Centipawns as winning chances from -1 to 1 (lichess's curve), so +900 -> +600 is not a blunder."""
+    return 2 / (1 + math.exp(-0.00368208 * cp)) - 1
+
+
+def blunders(g: dict, evals: dict) -> tuple[list[dict], bool]:
+    """The player's moves anywhere in the game that threw away BLUNDER_DROP of their winning chances, and
+    whether every position of the game had an evaluation (otherwise the list may be missing some)."""
+    sign = 1 if g["color"] == "white" else -1
+    mine = 0 if g["color"] == "white" else 1
+    board = chess.Board()
+    out, complete = [], key(board) in evals
+    for i, san in enumerate(g["sans"]):
+        before = key(board)
+        board.push_san(san)
+        after = key(board)
+        complete = complete and after in evals
+        if i % 2 != mine or before not in evals or after not in evals or not evals[before]["best"]:
+            continue
+        cb, ca = sign * evals[before]["cp"], sign * evals[after]["cp"]
+        drop = win_chances(cb) - win_chances(ca)
+        if drop >= BLUNDER_DROP and san != evals[before]["best"]:
+            out.append({"ply": i, "fen": before + " 0 1", "played": san, "best": evals[before]["best"],
+                        "before": cb, "after": ca, "loss": cb - ca, "drop": round(drop, 2),
+                        "line": g["sans"][:i]})
+    return out, complete
+
+
 def pct(xs) -> float:
     return round(100 * sum(x["score"] for x in xs) / len(xs), 1) if xs else None
 
@@ -81,7 +113,7 @@ def pct(xs) -> float:
 def main() -> None:
     games = [json.loads(l) for l in open(ROOT / "data" / "games.jsonl")]
     evals = json.loads((ROOT / "data" / "evals.json").read_text())
-    rapid = [g for g in games if g["time_class"] == "rapid"]
+    rapid = [g for g in games if g["time_class"] == TIME_CLASS]
     rec = [g for g in rapid if g["end"] >= SINCE]
 
     # --- walk each recent game through the engine evaluations -----------------------------
@@ -139,6 +171,23 @@ def main() -> None:
             })
     drills.sort(key=lambda d: -d["weight"])
     drills = drills[:24]
+
+    # --- blunders anywhere in the game: the most recent become puzzles ----------------------
+    puzzles, seen, per_game = [], set(), []
+    for g in reversed(rec):
+        found, complete = blunders(g, evals)
+        if complete:
+            per_game.append(len(found))
+        for b in found:
+            if len(puzzles) < PUZZLES and (b["fen"], b["played"]) not in seen:
+                seen.add((b["fen"], b["played"]))
+                puzzles.append({
+                    "kind": "puzzle", "fen": b["fen"], "color": g["color"], "line": b["line"],
+                    "played": b["played"], "best": b["best"], "times": 1, "reached": 1,
+                    "loss": b["loss"], "eval_best": b["before"], "drop": b["drop"], "score": g["score"],
+                    "example": g["url"], "end": g["end"], "opp": g["opp"],
+                    "opening": family(g["opening"]) if g["opening"] else "Sin apertura",
+                })
 
     # --- my own consistency: positions I reach often, how many different moves I play -----
     consistency = []
@@ -290,6 +339,10 @@ def main() -> None:
             "hist": dict(sorted(Counter(fm).items())),
         },
         "drills": drills,
+        "puzzles": puzzles,
+        "blunders": {"games": len(per_game),
+                     "per_game": round(st.mean(per_game), 2) if per_game else None,
+                     "clean_share": round(100 * sum(1 for n in per_game if n == 0) / len(per_game)) if per_game else None},
         "consistency": consistency[:14],
         "tree": {"white": tree("white"), "black": tree("black")},
         "openings": openings,
@@ -316,10 +369,13 @@ def main() -> None:
         },
     }
     (ROOT / "data" / "report.json").write_text(json.dumps(report, ensure_ascii=False))
-    print(f"report.json: {len(drills)} drills, {len(openings)} openings, {len(consistency)} hub positions")
+    print(f"report.json: {len(drills)} drills, {len(puzzles)} puzzles, {len(openings)} openings, "
+          f"{len(consistency)} hub positions")
 
 
 if __name__ == "__main__":
     if len(sys.argv) > 1:
         SINCE = sys.argv[1]
+    if len(sys.argv) > 2:
+        TIME_CLASS = sys.argv[2]
     main()

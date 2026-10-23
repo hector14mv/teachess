@@ -1,4 +1,4 @@
-"""Leitner flashcards built from the repeated opening mistakes in data/report.json.
+"""Leitner flashcards from data/report.json: repeated opening mistakes, then puzzles from recent blunders.
 
 Progress lives in data/drill_state.json so the CLI and the dashboard share it.
 """
@@ -52,8 +52,8 @@ def legal(fen: str, san: str) -> bool:
 
 
 def deck(report: dict | None = None) -> list[dict]:
-    """The repeated mistakes as cards, bent to the plan: a move the plan keeps is not drilled, and where the
-    plan picks another move than Stockfish, the card asks for the plan's move."""
+    """The repeated opening mistakes as cards, bent to the plan (a move the plan keeps is not drilled; where the
+    plan picks another move than Stockfish, the card asks for the plan's move), then the blunder puzzles."""
     report = core.load_report() if report is None else report
     chosen = plan()
     cards = []
@@ -67,6 +67,7 @@ def deck(report: dict | None = None) -> list[dict]:
         if a and a["move"] != d["best"]:
             card.update(best=a["move"], engine_best=d["best"], plan=a["text"])
         cards.append(card)
+    cards += [{**d, "id": card_id(d)} for d in report.get("puzzles", [])]
     return [{**c, "n": i + 1} for i, c in enumerate(cards)]
 
 
@@ -130,7 +131,17 @@ def present(card: dict) -> dict:
         "line": core.format_line(card["line"]), "ask": label + " ?",
         "times": card["times"], "reached": card["reached"], "choices": opts,
         "box": entry["box"] if entry else None, "example": card["example"], "plan": card.get("plan"),
+        "kind": card.get("kind", "opening"), "context": context(card),
     }
+
+
+def context(card: dict) -> str:
+    """One line on where the card comes from."""
+    if card.get("kind") != "puzzle":
+        return f"Aquí te has equivocado {card['times']} de las {card['reached']} veces que has llegado."
+    d = core.end_dt(card)
+    return (f"De tu partida del {d.day} {core.MONTHS[d.month - 1]} contra {card['opp']}: "
+            f"ibas {core.eval_text(card['eval_best'])}. Encuentra la buena.")
 
 
 def answer(card: dict, san: str, today: date | None = None) -> dict:
@@ -163,7 +174,10 @@ def answer(card: dict, san: str, today: date | None = None) -> dict:
         days = INTERVALS[1]
         good = (f"La de tu plan es {label}{card['best']}" if card.get("plan")
                 else f"La buena es {label}{card['best']}")
-        if san == card["played"]:
+        if san == card["played"] and card.get("kind") == "puzzle":
+            verdict = {"tone": "bad", "title": "Es la que jugaste en la partida",
+                       "body": f"{label}{san} te costó {core.pawns(card['loss'])} peones. {good}. Vuelve mañana."}
+        elif san == card["played"]:
             verdict = {"tone": "bad", "title": "Esta es la que sueles jugar",
                        "body": f"{label}{san} la has jugado {card['times']} de {card['reached']} veces y pierde "
                                f"{core.pawns(card['loss'])} peones. {good}. Vuelve mañana."}

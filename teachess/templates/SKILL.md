@@ -5,8 +5,8 @@ description: Read the user's own chess.com games through the teachess CLI (Stock
 
 # teachess
 
-`teachess` downloads the user's chess.com games, runs Stockfish over the first 12 moves of every rapid game of
-the last year and keeps the result locally. Every command takes `--json`; always use it and read the JSON, never
+`teachess` downloads the user's chess.com games, runs Stockfish over every move of the games in the window
+chosen at setup (one time control, e.g. rapid over the last year) and keeps the result locally. Every command takes `--json`; always use it and read the JSON, never
 the human output. Text fields (`advice`, `verdict`, `title`, `body`, `when`, opening names) are in Spanish: quote
 them or translate them to the user's language.
 
@@ -14,17 +14,19 @@ them or translate them to the user's language.
 
 | command | returns |
 |---|---|
+| `teachess setup --json` | the analysis options for this player (`options[]` with `window`, `games`, `minutes`; `recommended`). Show them to the user, then run `teachess setup --window W --json` with their choice (it analyses; minutes) |
 | `teachess sync --json` | new games since the last sync (list), after fetching, evaluating and rebuilding the report. Run it first when the question is about recent games; it takes seconds, or minutes on the very first run |
 | `teachess today --json` | the session right now: `state` (`streak`, `loss`, `win`, `draw`, `idle`, `empty`), `losses_in_a_row`, `advice`, `last` game, `score_after_loss` / `score_after_win` (% of points in games started within 45 min of a loss / a win) |
-| `teachess progress --json [--months 6]` | `rating` (now, best), `months[]` (games, `score` %, end-of-month `rating`, `mistake_by12` = % of games with a serious mistake before move 12, lower is better; `median_first_mistake` = its move number, later is better), `year` baseline, `drills` counters |
+| `teachess progress --json [--months 6]` | `rating` (now, best), `months[]` (games, `score` %, end-of-month `rating`, `mistake_by12` = % of games with a serious mistake before move 12, lower is better; `median_first_mistake` = its move number, later is better), `blunders_per_game`), `year` baseline, `drills` counters |
 | `teachess games --json [--since 30d\|2w\|3m\|YYYY-MM-DD] [--tc rapid\|blitz\|bullet\|daily\|all] [--limit 20]` | games, newest first: `result`, `side`, `opening`, `how`, `opp`, `opp_rating`, `my_rating`, `url` |
 | `teachess openings --json [--color white\|black\|all]` | repertoire of the last year: `name`, `n` games, `score` %, `mistake_by12` % |
-| `teachess review --json [last\|URL\|game id]` | one game: every move that lost ≥ 0.8 pawns (`mistakes[]` with `move`, `best_move`, `loss` in centipawns, `repeated` = how many earlier games had the same mistake) and a `verdict` |
-| `teachess drill --json [--limit 10]` | flashcards due today: `stats` and `due[]`, each with `id`, `fen`, `line` (moves that led there), `ask`, `choices[]` (three moves: the right one, the one the user keeps playing, one more) and `plan` (when set, the right move is the user's own plan for that position, not Stockfish's: say so) |
+| `teachess review --json [last\|URL\|game id]` | one game: opening mistakes (`mistakes[]`, first 12 moves, ≥ 0.8 pawns, `repeated` = earlier games with the same one), `blunders[]` anywhere in the game (`move`, `best_move`, `before`/`after` evaluations from the user's side, `drop` in winning chances), `worst`, and a `verdict` |
+| `teachess drill --json [--limit 10]` | cards due today: `stats` and `due[]`, each with `kind` (`opening`: a repeated mistake; `puzzle`: a blunder from a recent game), `context` (one line on where it comes from), `id`, `fen`, `line` (moves that led there), `ask`, `choices[]` (three moves: the right one, the one the user keeps playing, one more) and `plan` (when set, the right move is the user's own plan for that position, not Stockfish's: say so) |
 | `teachess drill --answer CARD MOVE --json` | grades an answer (`MOVE` is a `choices[].san`), moves the card between Leitner boxes and returns `correct`, `best`, `title`, `body`, next `due` date |
 
-A serious mistake is a move that loses 80 centipawns (0.8 pawns) or more. `score` is the share of points
-(win 1, draw ½), not the win rate. Only rapid games are evaluated.
+An opening mistake loses 0.8 pawns or more in the first 12 moves; a blunder, anywhere, throws away 0.3 of the
+winning chances (−1..1). `score` is the share of points (win 1, draw ½), not the win rate. Only the coached
+time control is evaluated.
 
 ## How to use it well
 

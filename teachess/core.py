@@ -6,7 +6,10 @@ and adds what the live tools need (incremental sync, the current session, single
 
 from __future__ import annotations
 
+import contextlib
+import fcntl
 import json
+import os
 import shutil
 import statistics
 import sys
@@ -200,21 +203,42 @@ def upgrade_games() -> int:
 
 def rebuild_report() -> None:
     build_report.SINCE, build_report.TIME_CLASS = window_since(), tc()
-    build_report.main()
+    with data_lock():
+        build_report.main()
     deepen_puzzles()
 
 
 # --- deep check of what the player is shown ---------------------------------------------------
 
-def deep_evals(keys: list[str]) -> dict:
+@contextlib.contextmanager
+def data_lock():
+    """One process at a time writes report.json and deep.json (the background watcher, the dashboard and the
+    CLI may all rebuild). Held only around reading and writing those files, never around Stockfish."""
+    DATA.mkdir(exist_ok=True)
+    with open(DATA / "data.lock", "w") as lock:
+        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            yield
+        finally:
+            fcntl.flock(lock, fcntl.LOCK_UN)
+
+
+def write_json(path: Path, data) -> None:
+    tmp = path.with_name(f"{path.name}.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(data, ensure_ascii=False))
+    tmp.replace(path)
+
+
+def deep_evals(keys: list[str], compute: bool = True) -> dict:
     """Stockfish at DEEP_DEPTH for these positions (keys as in evals.json), cached in data/deep.json.
 
     One thread and a fresh hash per position (a new `game`), so the same position always gets the same answer.
-    Without Stockfish it returns what the cache has."""
+    compute=False, or no Stockfish, returns only what the cache already has."""
     cache = json.loads(DEEP.read_text()) if DEEP.exists() else {}
     todo = [k for k in dict.fromkeys(keys) if k not in cache]
     path = shutil.which("stockfish")
-    if todo and path:
+    if todo and compute and path:
+        fresh = {}
         engine = chess.engine.SimpleEngine.popen_uci(path)
         try:
             engine.configure({"Threads": 1, "Hash": 64})
@@ -222,30 +246,31 @@ def deep_evals(keys: list[str]) -> dict:
                 board = chess.Board(k + " 0 1")
                 if board.is_game_over():
                     outcome = board.outcome()
-                    cache[k] = {"cp": 0 if outcome.winner is None else (1000 if outcome.winner else -1000), "best": None}
+                    fresh[k] = {"cp": 0 if outcome.winner is None else (1000 if outcome.winner else -1000), "best": None}
                     continue
                 info = engine.analyse(board, chess.engine.Limit(depth=DEEP_DEPTH), game=object())
-                cache[k] = {"cp": max(-1000, min(1000, info["score"].white().score(mate_score=1000))),
+                fresh[k] = {"cp": max(-1000, min(1000, info["score"].white().score(mate_score=1000))),
                             "best": board.san(info["pv"][0]) if info.get("pv") else None}
         finally:
             engine.quit()
-        tmp = DEEP.with_suffix(".tmp")
-        tmp.write_text(json.dumps(cache))
-        tmp.replace(DEEP)
+        with data_lock():  # merge into the file as it is now, another process may have added entries
+            cache = json.loads(DEEP.read_text()) if DEEP.exists() else {}
+            cache.update(fresh)
+            write_json(DEEP, cache)
     return {k: cache[k] for k in keys if k in cache}
 
 
-def confirm_blunders(color: str, found: list[dict]) -> list[dict]:
+def confirm_blunders(color: str, found: list[dict], compute: bool = True) -> list[dict]:
     """Re-check blunders (as build_report.blunders returns them) at DEEP_DEPTH: keep only the ones that still
     throw away BLUNDER_DROP of the winning chances, with the deep best move and evaluations. A blunder whose
-    positions could not be checked (no Stockfish) is kept as it was."""
+    positions are not checked (no Stockfish, or compute=False and not cached yet) is kept as it was."""
     sign = 1 if color == "white" else -1
     pairs = []
     for b in found:
         board = chess.Board(b["fen"])
         board.push_san(b["played"])
         pairs.append((b, b["fen"].rsplit(" ", 2)[0], key(board)))
-    deep = deep_evals([k for _, before, after in pairs for k in (before, after)])
+    deep = deep_evals([k for _, before, after in pairs for k in (before, after)], compute=compute)
     out = []
     for b, before, after in pairs:
         if before not in deep or after not in deep:
@@ -262,23 +287,24 @@ def confirm_blunders(color: str, found: list[dict]) -> list[dict]:
 
 def deepen_puzzles() -> None:
     """Re-check the report's puzzles at DEEP_DEPTH: the right answer becomes the deep best move, and a position
-    that is not a blunder at that depth is no longer a puzzle."""
-    report = load_report()
-    puzzles = report.get("puzzles", [])
-    if not puzzles:
-        return
-    kept = []
-    for p in puzzles:
-        checked = confirm_blunders(p["color"], [{"fen": p["fen"], "played": p["played"], "best": p["best"],
-                                                 "before": p["eval_best"], "loss": p["loss"], "drop": p["drop"]}])
-        if checked:
-            c = checked[0]
-            kept.append({**p, "best": c["best"], "eval_best": c["before"], "loss": c["loss"], "drop": c["drop"],
-                         "deep": c.get("deep", False)})
-    report["puzzles"] = kept
-    tmp = REPORT.with_suffix(".tmp")
-    tmp.write_text(json.dumps(report, ensure_ascii=False))
-    tmp.replace(REPORT)
+    that is not a blunder at that depth is no longer a puzzle. Stockfish runs first, outside the lock; then the
+    report as it is now (maybe newer) is rewritten from the cache."""
+    as_blunder = lambda p: {"fen": p["fen"], "played": p["played"], "best": p["best"], "before": p["eval_best"],
+                            "loss": p["loss"], "drop": p["drop"]}
+    for p in load_report().get("puzzles", []):
+        confirm_blunders(p["color"], [as_blunder(p)])
+    with data_lock():
+        report = load_report()
+        kept = []
+        for p in report.get("puzzles", []):
+            checked = confirm_blunders(p["color"], [as_blunder(p)], compute=False)
+            if checked:
+                c = checked[0]
+                kept.append({**p, "best": c["best"], "eval_best": c["before"], "loss": c["loss"], "drop": c["drop"],
+                             "deep": c.get("deep", False)})
+        if report:
+            report["puzzles"] = kept
+            write_json(REPORT, report)
 
 
 def positions(games: list[dict], plies: int | None = None) -> set[str]:
@@ -357,6 +383,7 @@ def review(g: dict, evals: dict | None = None, report: dict | None = None, deep:
     (moves that threw away a big part of the winning chances), with a one-line verdict.
 
     deep=True re-checks the blunders at DEEP_DEPTH (about a second each), for what the player is shown;
+    deep="cached" uses only checks already in the cache (for the dashboard, which must answer at once);
     statistics over many games leave it off."""
     evals = load_evals() if evals is None else evals
     report = load_report() if report is None else report
@@ -385,7 +412,7 @@ def review(g: dict, evals: dict | None = None, report: dict | None = None, deep:
             })
     found, complete = build_report.blunders(g, evals)
     if deep:
-        found = confirm_blunders(g["color"], found)
+        found = confirm_blunders(g["color"], found, compute=deep != "cached")
     blunders = [{"ply": b["ply"], "move": move_label(b["ply"]) + b["played"], "played": b["played"],
                  "best": b["best"], "best_move": move_label(b["ply"]) + b["best"], "before": b["before"],
                  "after": b["after"], "loss": b["loss"], "drop": b["drop"]} for b in found]

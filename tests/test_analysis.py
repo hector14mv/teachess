@@ -56,14 +56,18 @@ for san in sans[:5]:
 before = core.key(b0)
 after_nf6 = b0.copy(); after_nf6.push_san("Nf6")
 blunder = {"fen": before + " 0 1", "played": "Nf6", "best": "g6", "before": -30, "after": -900, "loss": 870, "drop": 0.9}
-core.deep_evals = lambda keys: {before: {"cp": 30, "best": "Qe7"}, core.key(after_nf6): {"cp": 1000, "best": None}}
+core.deep_evals = lambda keys, compute=True: {before: {"cp": 30, "best": "Qe7"}, core.key(after_nf6): {"cp": 1000, "best": None}}
 checked = core.confirm_blunders("black", [blunder])
 expect("deep best move shown", checked[0]["best"], "Qe7")
 expect("deep evaluations, player side", (checked[0]["before"], checked[0]["after"]), (-30, -1000))
-core.deep_evals = lambda keys: {before: {"cp": 0, "best": "g6"}, core.key(after_nf6): {"cp": 40, "best": None}}
+core.deep_evals = lambda keys, compute=True: {before: {"cp": 0, "best": "g6"}, core.key(after_nf6): {"cp": 40, "best": None}}
 expect("not a blunder at depth: dropped", core.confirm_blunders("black", [blunder]), [])
-core.deep_evals = lambda keys: {}
+core.deep_evals = lambda keys, compute=True: {}
 expect("no Stockfish: kept as it was", core.confirm_blunders("black", [blunder]), [blunder])
+asked = []
+core.deep_evals = lambda keys, compute=True: asked.append(compute) or {}
+core.confirm_blunders("black", [blunder], compute=False)
+expect("cached-only check never computes", asked, [False])
 core.deep_evals = real_deep
 
 # --- puzzle ids never collide with the opening card of the same position and move -----------

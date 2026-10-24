@@ -40,7 +40,7 @@ class Store:
     def review(self, g: dict) -> dict:
         with self.lock:
             if g["url"] not in self._reviews:
-                self._reviews[g["url"]] = core.review(g, self.evals, self.report, deep=True)
+                self._reviews[g["url"]] = core.review(g, self.evals, self.report, deep="cached")
             return self._reviews[g["url"]]
 
     def state(self) -> dict:

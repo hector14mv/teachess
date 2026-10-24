@@ -232,8 +232,9 @@ def drill_loop(args) -> None:
 def show_setup(r: dict, args) -> None:
     per = "—" if r["blunders_per_game"] is None else f"{r['blunders_per_game']:.1f}".replace(".", ",")
     print(blue(bold(f"\nListo: {r['games']} partidas de {r['time_class']} desde {r['since']}.")))
-    print(f"Errores graves por partida: {per}. Tienes {r['drills']} tarjetas de apertura y {r['puzzles']} puzles "
-          f"de tus propios errores: teachess drill.")
+    cards = f"{r['drills']} tarjeta{'' if r['drills'] == 1 else 's'} de apertura"
+    puzzles = f"{r['puzzles']} puzle{'' if r['puzzles'] == 1 else 's'}"
+    print(f"Errores graves por partida: {per}. Tienes {cards} y {puzzles} de tus propios errores: teachess drill.")
 
 
 def cmd_setup(args) -> None:

@@ -241,13 +241,15 @@ def cmd_setup(args) -> None:
     if args.json and not args.window:
         # For agents: the options to show the player; call again with --window to analyse
         with contextlib.redirect_stdout(sys.stderr):
+            setup.ensure_user(args.user)
             o = setup.options(core.load_games() or _fetch_all(), args.time_class)
         return emit(o)
     if args.json:
         with contextlib.redirect_stdout(sys.stderr):
-            r = setup.run(args.window, args.time_class, log=lambda *_: None)
+            r = setup.run(args.window, args.time_class, log=lambda *_: None, user=args.user)
         return emit(r)
-    show_setup(setup.run(args.window, args.time_class, interactive=sys.stdin.isatty() and not args.yes), args)
+    show_setup(setup.run(args.window, args.time_class, interactive=sys.stdin.isatty() and not args.yes,
+                         user=args.user), args)
 
 
 def _fetch_all() -> list[dict]:
@@ -395,6 +397,7 @@ def build_parser() -> Parser:
     sp.add_argument("--window", choices=list(core.WINDOWS), help="3m, 6m, 1y, 2y, 3y o all; sin ella, te pregunta")
     sp.add_argument("--time-class", choices=list(core.TIME_CLASSES), help="ritmo; por defecto, el que más juegas")
     sp.add_argument("--yes", action="store_true", help="sin preguntar: la ventana recomendada")
+    sp.add_argument("--user", help="tu usuario de chess.com (si no, te lo pregunta)")
     sp = add("watch", "te avisa al acabar cada partida y cuando toca parar; «install» lo deja de fondo", cmd_watch)
     sp.add_argument("action", nargs="?", choices=["install", "uninstall", "status"])
     sp.add_argument("--once", action="store_true", help="una sola revisión y sale (lo que ejecuta el servicio)")

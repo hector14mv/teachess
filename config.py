@@ -1,7 +1,7 @@
 """Local settings: which chess.com player teachess follows, what to analyse, and the coach's notes.
 
-The player comes from the TEACHESS_USER environment variable, else from config.json's "user".
-config.json is personal and git-ignored; config.example.json shows its shape.
+The player comes from the TEACHESS_USER environment variable, else from config.json's "user", which
+`teachess setup` asks for and writes. config.json is personal and git-ignored; config.example.json shows its shape.
 """
 
 from __future__ import annotations
@@ -38,6 +38,5 @@ def save(data: dict) -> None:
 def chess_user() -> str:
     user = os.environ.get("TEACHESS_USER") or load().get("user", "")
     if not user:
-        raise SystemExit("Set your chess.com username: TEACHESS_USER=<name> or \"user\" in config.json "
-                         "(see config.example.json).")
+        raise SystemExit("Falta tu usuario de chess.com: ejecuta teachess setup (o pon TEACHESS_USER=<usuario>).")
     return user.lower()

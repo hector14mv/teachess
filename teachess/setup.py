@@ -9,15 +9,17 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import shutil
 import time
+import urllib.error
 from datetime import date
 
 import chess
 import chess.engine
 
 from . import core
-from .errors import SetupError, UsageError
+from .errors import SetupError, Unreachable, UsageError
 
 MIN_GAMES = 300  # enough games of one time control to find repeated mistakes
 OFFERED = ["3m", "1y", "3y", "all"]
@@ -106,12 +108,63 @@ def ask(o: dict) -> str:
     return o["options"][int(pick) - 1]["window"]
 
 
-def run(window: str | None = None, time_class: str | None = None, interactive: bool = False, log=print) -> dict:
-    """Fetch the archive, pick the window (asked, given or recommended), save it and analyse it."""
+USERNAME = re.compile(r"[A-Za-z0-9_-]{3,25}")
+
+
+def player_exists(user: str) -> bool:
+    try:
+        core.fetch_games.get(f"https://api.chess.com/pub/player/{user}")
+        return True
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return False
+        raise Unreachable(f"chess.com respondió {e.code}.") from None
+    except (urllib.error.URLError, TimeoutError, RuntimeError) as e:
+        raise Unreachable(f"No llego a chess.com: {e}") from None
+
+
+def ensure_user(user: str | None = None, interactive: bool = False) -> str:
+    """The chess.com player this folder follows: given with --user, already configured, or asked. A new one is
+    checked against chess.com and saved to config.json, so nobody has to edit a file."""
+    cfg = dict(core.config.load())
+    current = (os.environ.get("TEACHESS_USER") or cfg.get("user") or "").lower()
+    if not user and current and current != "your_chesscom_username":
+        return current
+    while True:
+        if not user:
+            if not interactive:
+                raise SetupError("Dime tu usuario de chess.com: teachess setup --user TU_USUARIO")
+            user = input("¿Cuál es tu usuario de chess.com? > ").strip()
+            continue
+        user = user.strip().lower()
+        problem = None
+        if not USERNAME.fullmatch(user):
+            problem = f"«{user}» no parece un usuario de chess.com (letras, números, - y _)."
+        elif current and user != current and core.GAMES.exists():
+            raise SetupError(f"Esta carpeta ya tiene las partidas de {current}. Para seguir a {user}, "
+                             "instala teachess en otra carpeta.")
+        elif not player_exists(user):
+            problem = f"chess.com no conoce al jugador «{user}»."
+        if not problem:
+            break
+        if not interactive:
+            raise SetupError(problem)
+        print(problem)
+        user = None
+    cfg["user"] = user
+    core.config.save(cfg)
+    return user
+
+
+def run(window: str | None = None, time_class: str | None = None, interactive: bool = False, log=print,
+        user: str | None = None) -> dict:
+    """Make sure there is a player, fetch the archive, pick the window (asked, given or recommended), save it
+    and analyse it."""
     if window and window not in core.WINDOWS:
         raise UsageError(f"Ventana desconocida: {window}. Usa una de {', '.join(core.WINDOWS)}.")
     if not shutil.which("stockfish"):
         raise SetupError("Stockfish no está instalado (brew install stockfish o apt install stockfish).")
+    ensure_user(user, interactive)
     log("Descargando tus partidas de chess.com (la primera vez, mes a mes)…")
     core.sync(log=log, analyse=False)
     if n := core.upgrade_games():

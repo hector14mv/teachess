@@ -25,7 +25,7 @@ class Store:
         self.syncing = False
         self.last_check = None
         self.error = None
-        self._reviews: dict[str, dict] = {}
+        self._reviews: dict[tuple, dict] = {}  # (game url, deep cache version) -> review
         self.reload()
 
     def reload(self) -> None:
@@ -39,9 +39,12 @@ class Store:
 
     def review(self, g: dict) -> dict:
         with self.lock:
-            if g["url"] not in self._reviews:
-                self._reviews[g["url"]] = core.review(g, self.evals, self.report, deep="cached")
-            return self._reviews[g["url"]]
+            # Keyed by the deep cache's version too: the watcher may confirm this game's blunders later
+            deep = core.DEEP.stat().st_mtime if core.DEEP.exists() else 0
+            k = (g["url"], deep)
+            if k not in self._reviews:
+                self._reviews[k] = core.review(g, self.evals, self.report, deep="cached")
+            return self._reviews[k]
 
     def state(self) -> dict:
         with self.lock:

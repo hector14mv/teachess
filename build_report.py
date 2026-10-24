@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import math
+import os
 import re
 import statistics as st
 import sys
@@ -371,7 +372,11 @@ def main() -> None:
                          "loss": round(st.mean(g["my_acc"] for g in acc if g["score"] == 0), 1)},
         },
     }
-    (ROOT / "data" / "report.json").write_text(json.dumps(report, ensure_ascii=False))
+    # Write aside and swap, so a reader (the dashboard, the watcher) never sees a half-written report
+    out = ROOT / "data" / "report.json"
+    tmp = out.with_name(f"report.json.{os.getpid()}.tmp")
+    tmp.write_text(json.dumps(report, ensure_ascii=False))
+    tmp.replace(out)
     print(f"report.json: {len(drills)} drills, {len(puzzles)} puzzles, {len(openings)} openings, "
           f"{len(consistency)} hub positions")
 

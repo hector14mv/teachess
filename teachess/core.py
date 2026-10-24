@@ -205,7 +205,7 @@ def rebuild_report() -> None:
     build_report.SINCE, build_report.TIME_CLASS = window_since(), tc()
     with data_lock():
         build_report.main()
-    deepen_puzzles()
+    deepen_report()
 
 
 # --- deep check of what the player is shown ---------------------------------------------------
@@ -260,51 +260,73 @@ def deep_evals(keys: list[str], compute: bool = True) -> dict:
     return {k: cache[k] for k in keys if k in cache}
 
 
-def confirm_blunders(color: str, found: list[dict], compute: bool = True) -> list[dict]:
-    """Re-check blunders (as build_report.blunders returns them) at DEEP_DEPTH: keep only the ones that still
-    throw away BLUNDER_DROP of the winning chances, with the deep best move and evaluations. A blunder whose
-    positions are not checked (no Stockfish, or compute=False and not cached yet) is kept as it was."""
+def is_blunder(before: int, after: int) -> bool:
+    return build_report.win_chances(before) - build_report.win_chances(after) >= build_report.BLUNDER_DROP
+
+
+def is_mistake(before: int, after: int) -> bool:
+    return before - after >= MISTAKE_CP
+
+
+def confirm(color: str, items: list[dict], counts, compute: bool = True) -> list[dict]:
+    """Re-check moves at DEEP_DEPTH. Each item has the position before the move (`fen`, as in the report) and
+    the move `played`; `counts(before, after)` says whether the move still counts at that depth (player-side
+    centipawns). Kept items get the deep best move, evaluations, `loss` and `drop`; an item whose positions
+    are not checked (no Stockfish, or compute=False and not cached yet) is kept as it was."""
     sign = 1 if color == "white" else -1
     pairs = []
-    for b in found:
-        board = chess.Board(b["fen"])
-        board.push_san(b["played"])
-        pairs.append((b, b["fen"].rsplit(" ", 2)[0], key(board)))
+    for item in items:
+        board = chess.Board(item["fen"])
+        board.push_san(item["played"])
+        pairs.append((item, item["fen"].rsplit(" ", 2)[0], key(board)))
     deep = deep_evals([k for _, before, after in pairs for k in (before, after)], compute=compute)
     out = []
-    for b, before, after in pairs:
+    for item, before, after in pairs:
         if before not in deep or after not in deep:
-            out.append(b)
+            out.append(item)
             continue
         cb, ca = sign * deep[before]["cp"], sign * deep[after]["cp"]
-        drop = build_report.win_chances(cb) - build_report.win_chances(ca)
         best = deep[before]["best"]
-        if drop >= build_report.BLUNDER_DROP and best and best != b["played"]:
-            out.append({**b, "best": best, "before": cb, "after": ca, "loss": cb - ca, "drop": round(drop, 2),
+        if counts(cb, ca) and best and best != item["played"]:
+            drop = build_report.win_chances(cb) - build_report.win_chances(ca)
+            out.append({**item, "best": best, "before": cb, "after": ca, "loss": cb - ca, "drop": round(drop, 2),
                         "deep": True})
     return out
 
 
-def deepen_puzzles() -> None:
-    """Re-check the report's puzzles at DEEP_DEPTH: the right answer becomes the deep best move, and a position
-    that is not a blunder at that depth is no longer a puzzle. Stockfish runs first, outside the lock; then the
-    report as it is now (maybe newer) is rewritten from the cache."""
-    as_blunder = lambda p: {"fen": p["fen"], "played": p["played"], "best": p["best"], "before": p["eval_best"],
-                            "loss": p["loss"], "drop": p["drop"]}
-    for p in load_report().get("puzzles", []):
-        confirm_blunders(p["color"], [as_blunder(p)])
+def confirm_blunders(color: str, found: list[dict], compute: bool = True) -> list[dict]:
+    """Blunders (as build_report.blunders returns them) that still throw away BLUNDER_DROP of the winning
+    chances at DEEP_DEPTH, with the deep best move."""
+    return confirm(color, found, is_blunder, compute)
+
+
+def deepen_report() -> None:
+    """Re-check what the report shows as right answers at DEEP_DEPTH: the puzzles (still a blunder?) and the
+    opening cards (still a mistake of MISTAKE_CP?). Each takes the deep best move; what no longer counts at that
+    depth is dropped. Stockfish runs first, outside the lock; then the report as it is now (maybe newer) is
+    rewritten from the cache."""
+    groups = (("puzzles", is_blunder), ("drills", is_mistake))
+    item = lambda c: {"fen": c["fen"], "played": c["played"], "best": c["best"]}
+    report = load_report()
+    for name, counts in groups:
+        for c in report.get(name, []):
+            confirm(c["color"], [item(c)], counts)
     with data_lock():
         report = load_report()
-        kept = []
-        for p in report.get("puzzles", []):
-            checked = confirm_blunders(p["color"], [as_blunder(p)], compute=False)
-            if checked:
-                c = checked[0]
-                kept.append({**p, "best": c["best"], "eval_best": c["before"], "loss": c["loss"], "drop": c["drop"],
-                             "deep": c.get("deep", False)})
-        if report:
-            report["puzzles"] = kept
-            write_json(REPORT, report)
+        if not report:
+            return
+        for name, counts in groups:
+            kept = []
+            for c in report.get(name, []):
+                checked = confirm(c["color"], [item(c)], counts, compute=False)
+                if checked:
+                    d = checked[0]
+                    if d.get("deep"):
+                        c = {**c, "best": d["best"], "eval_best": d["before"], "loss": d["loss"], "drop": d["drop"],
+                             "deep": True}
+                    kept.append(c)
+            report[name] = kept
+        write_json(REPORT, report)
 
 
 def positions(games: list[dict], plies: int | None = None) -> set[str]:
@@ -405,7 +427,7 @@ def review(g: dict, evals: dict | None = None, report: dict | None = None, deep:
         if loss >= MISTAKE_CP:
             d = drills.get((before, san))
             mistakes.append({
-                "ply": i, "move": move_label(i) + san, "played": san, "best": evals[before]["best"],
+                "ply": i, "fen": before + " 0 1", "move": move_label(i) + san, "played": san, "best": evals[before]["best"],
                 "best_move": move_label(i) + (evals[before]["best"] or "?"),
                 "loss": loss, "line": format_line(g["sans"][:i]),
                 "repeated": d["times"] if d else None, "reached": d["reached"] if d else None,
@@ -413,6 +435,8 @@ def review(g: dict, evals: dict | None = None, report: dict | None = None, deep:
     found, complete = build_report.blunders(g, evals)
     if deep:
         found = confirm_blunders(g["color"], found, compute=deep != "cached")
+        mistakes = [{**m, "best_move": move_label(m["ply"]) + m["best"]} if m.get("deep") else m
+                    for m in confirm(g["color"], mistakes, is_mistake, compute=deep != "cached")]
     blunders = [{"ply": b["ply"], "move": move_label(b["ply"]) + b["played"], "played": b["played"],
                  "best": b["best"], "best_move": move_label(b["ply"]) + b["best"], "before": b["before"],
                  "after": b["after"], "loss": b["loss"], "drop": b["drop"]} for b in found]

@@ -64,6 +64,11 @@ core.deep_evals = lambda keys, compute=True: {before: {"cp": 0, "best": "g6"}, c
 expect("not a blunder at depth: dropped", core.confirm_blunders("black", [blunder]), [])
 core.deep_evals = lambda keys, compute=True: {}
 expect("no Stockfish: kept as it was", core.confirm_blunders("black", [blunder]), [blunder])
+# opening mistakes use their own threshold: 0.8 pawns lost, not winning chances
+core.deep_evals = lambda keys, compute=True: {before: {"cp": -20, "best": "g6"}, core.key(after_nf6): {"cp": 70, "best": None}}
+expect("opening mistake that holds at depth", [m["best"] for m in core.confirm("black", [blunder], core.is_mistake)], ["g6"])
+core.deep_evals = lambda keys, compute=True: {before: {"cp": -20, "best": "g6"}, core.key(after_nf6): {"cp": 30, "best": None}}
+expect("opening mistake of 0.5 pawns at depth: dropped", core.confirm("black", [blunder], core.is_mistake), [])
 asked = []
 core.deep_evals = lambda keys, compute=True: asked.append(compute) or {}
 core.confirm_blunders("black", [blunder], compute=False)

@@ -164,6 +164,16 @@ try:
     expect("another player refused", "no error", "SetupError")
 except core.SetupError:
     expect("another player refused", "SetupError", "SetupError")
+same_pair = tmp / "raw_same_pair"
+real_raw = fetch_games.RAW
+fetch_games.RAW = same_pair; same_pair.mkdir()
+(same_pair / "2026-10.json").write_text(json.dumps({"games": [raw]}))
+try:
+    core.claim_folder("me")
+    expect("unclear owner: nobody adopted", "no error", "SetupError")
+except core.SetupError:
+    expect("unclear owner: nobody adopted", "SetupError", "SetupError")
+fetch_games.RAW = real_raw
 core.claim_folder("me", record=True)
 expect("the folder's player recorded", core.PLAYER.read_text().strip(), "me")
 

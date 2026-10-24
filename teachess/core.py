@@ -228,7 +228,12 @@ def claim_folder(user: str, record: bool = False) -> None:
     """One player per folder, never mixed, whichever way the player was named (config.json or TEACHESS_USER).
     The check and the record happen under the cross-process lock; record only once chess.com knows the player."""
     with data_lock():
-        owner = folder_player() or (cached_player() if GAMES.exists() else None)
+        owner = folder_player()
+        if not owner and (GAMES.exists() or any(fetch_games.RAW.glob("*.json"))):
+            owner = cached_player()
+            if owner is None:  # games here, but no single player in all of them: adopt nobody
+                raise SetupError("No sé de quién son las partidas de esta carpeta. Instala teachess en otra carpeta "
+                                 "para seguir a un jugador.")
         if owner and owner != user:
             raise SetupError(f"Esta carpeta tiene las partidas de {owner}, no de {user}. Para seguir a {user}, "
                              "instala teachess en otra carpeta.")

@@ -37,8 +37,9 @@ def standard_start(g: dict) -> bool:
     chess.com's initial_setup, or else the PGN's own FEN tag."""
     fen = g.get("initial_setup")
     if not fen:
-        headers = chess.pgn.read_headers(io.StringIO(g.get("pgn") or ""))
-        fen = (headers or {}).get("FEN") or chess.STARTING_FEN
+        # The same reading parse() does, so both always agree on where a game starts
+        game = chess.pgn.read_game(io.StringIO(g.get("pgn") or ""))
+        fen = game.board().fen() if game else chess.STARTING_FEN
     return fen.split()[:2] == STANDARD
 
 

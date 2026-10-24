@@ -174,7 +174,10 @@ checks, one stop per streak, failed notifications, a corrupt state file, two wat
 
 - The interface and the coaching text are in Spanish for now.
 - chess.com's monthly archive can lag behind a finished game by a few minutes.
-- Stockfish runs at depth 12: strong enough to judge a 1300 game, not to explain a grandmaster's.
+- Stockfish runs at depth 12 over every move, enough to find the blunders. At that depth it can name a different
+  best move from one run to the next when two moves are close, so every best move you are shown (a game's
+  blunders, the puzzles) is re-checked at depth 18 with a clean hash: about a second per position, cached in
+  `data/deep.json`, and the same answer every time.
 
 ## License
 

@@ -36,9 +36,14 @@ DATA = ROOT / "data"
 GAMES = DATA / "games.jsonl"
 EVALS = DATA / "evals.json"
 REPORT = DATA / "report.json"
+DEEP = DATA / "deep.json"  # positions re-checked at DEEP_DEPTH: the best moves the player is shown
 MADRID = ZoneInfo("Europe/Madrid")
 PLIES = 24
 DEPTH = 12  # depth the original evals.json was built with
+# Depth 12 finds blunders well but can name a different "best move" from run to run when two moves are close;
+# every best move shown to the player (a game's blunders, the puzzles) is re-checked here, with a clean hash so
+# the answer is the same every time (about a second per position)
+DEEP_DEPTH = 18
 BULK = 3000  # above this many positions, evaluate with the parallel batch script
 MISTAKE_CP = build_report.MISTAKE_CP
 SESSION_GAP_MIN = build_report.SESSION_GAP_MIN
@@ -196,6 +201,84 @@ def upgrade_games() -> int:
 def rebuild_report() -> None:
     build_report.SINCE, build_report.TIME_CLASS = window_since(), tc()
     build_report.main()
+    deepen_puzzles()
+
+
+# --- deep check of what the player is shown ---------------------------------------------------
+
+def deep_evals(keys: list[str]) -> dict:
+    """Stockfish at DEEP_DEPTH for these positions (keys as in evals.json), cached in data/deep.json.
+
+    One thread and a fresh hash per position (a new `game`), so the same position always gets the same answer.
+    Without Stockfish it returns what the cache has."""
+    cache = json.loads(DEEP.read_text()) if DEEP.exists() else {}
+    todo = [k for k in dict.fromkeys(keys) if k not in cache]
+    path = shutil.which("stockfish")
+    if todo and path:
+        engine = chess.engine.SimpleEngine.popen_uci(path)
+        try:
+            engine.configure({"Threads": 1, "Hash": 64})
+            for k in todo:
+                board = chess.Board(k + " 0 1")
+                if board.is_game_over():
+                    outcome = board.outcome()
+                    cache[k] = {"cp": 0 if outcome.winner is None else (1000 if outcome.winner else -1000), "best": None}
+                    continue
+                info = engine.analyse(board, chess.engine.Limit(depth=DEEP_DEPTH), game=object())
+                cache[k] = {"cp": max(-1000, min(1000, info["score"].white().score(mate_score=1000))),
+                            "best": board.san(info["pv"][0]) if info.get("pv") else None}
+        finally:
+            engine.quit()
+        tmp = DEEP.with_suffix(".tmp")
+        tmp.write_text(json.dumps(cache))
+        tmp.replace(DEEP)
+    return {k: cache[k] for k in keys if k in cache}
+
+
+def confirm_blunders(color: str, found: list[dict]) -> list[dict]:
+    """Re-check blunders (as build_report.blunders returns them) at DEEP_DEPTH: keep only the ones that still
+    throw away BLUNDER_DROP of the winning chances, with the deep best move and evaluations. A blunder whose
+    positions could not be checked (no Stockfish) is kept as it was."""
+    sign = 1 if color == "white" else -1
+    pairs = []
+    for b in found:
+        board = chess.Board(b["fen"])
+        board.push_san(b["played"])
+        pairs.append((b, b["fen"].rsplit(" ", 2)[0], key(board)))
+    deep = deep_evals([k for _, before, after in pairs for k in (before, after)])
+    out = []
+    for b, before, after in pairs:
+        if before not in deep or after not in deep:
+            out.append(b)
+            continue
+        cb, ca = sign * deep[before]["cp"], sign * deep[after]["cp"]
+        drop = build_report.win_chances(cb) - build_report.win_chances(ca)
+        best = deep[before]["best"]
+        if drop >= build_report.BLUNDER_DROP and best and best != b["played"]:
+            out.append({**b, "best": best, "before": cb, "after": ca, "loss": cb - ca, "drop": round(drop, 2),
+                        "deep": True})
+    return out
+
+
+def deepen_puzzles() -> None:
+    """Re-check the report's puzzles at DEEP_DEPTH: the right answer becomes the deep best move, and a position
+    that is not a blunder at that depth is no longer a puzzle."""
+    report = load_report()
+    puzzles = report.get("puzzles", [])
+    if not puzzles:
+        return
+    kept = []
+    for p in puzzles:
+        checked = confirm_blunders(p["color"], [{"fen": p["fen"], "played": p["played"], "best": p["best"],
+                                                 "before": p["eval_best"], "loss": p["loss"], "drop": p["drop"]}])
+        if checked:
+            c = checked[0]
+            kept.append({**p, "best": c["best"], "eval_best": c["before"], "loss": c["loss"], "drop": c["drop"],
+                         "deep": c.get("deep", False)})
+    report["puzzles"] = kept
+    tmp = REPORT.with_suffix(".tmp")
+    tmp.write_text(json.dumps(report, ensure_ascii=False))
+    tmp.replace(REPORT)
 
 
 def positions(games: list[dict], plies: int | None = None) -> set[str]:
@@ -269,9 +352,12 @@ def eval_text(cp: int) -> str:
     return ("+" if cp >= 0 else "−") + pawns(cp)
 
 
-def review(g: dict, evals: dict | None = None, report: dict | None = None) -> dict:
+def review(g: dict, evals: dict | None = None, report: dict | None = None, deep: bool = False) -> dict:
     """The player's costly moves: opening mistakes (first 12 moves, ≥ 0.8 pawns) and blunders anywhere
-    (moves that threw away a big part of the winning chances), with a one-line verdict."""
+    (moves that threw away a big part of the winning chances), with a one-line verdict.
+
+    deep=True re-checks the blunders at DEEP_DEPTH (about a second each), for what the player is shown;
+    statistics over many games leave it off."""
     evals = load_evals() if evals is None else evals
     report = load_report() if report is None else report
     drills = {(d["fen"].rsplit(" ", 2)[0], d["played"]): d for d in report.get("drills", [])}
@@ -298,6 +384,8 @@ def review(g: dict, evals: dict | None = None, report: dict | None = None) -> di
                 "repeated": d["times"] if d else None, "reached": d["reached"] if d else None,
             })
     found, complete = build_report.blunders(g, evals)
+    if deep:
+        found = confirm_blunders(g["color"], found)
     blunders = [{"ply": b["ply"], "move": move_label(b["ply"]) + b["played"], "played": b["played"],
                  "best": b["best"], "best_move": move_label(b["ply"]) + b["best"], "before": b["before"],
                  "after": b["after"], "loss": b["loss"], "drop": b["drop"]} for b in found]

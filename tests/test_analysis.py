@@ -48,6 +48,24 @@ expect("missing position -> incomplete", build_report.blunders(black, evals)[1],
 truncated = {"color": "black", "sans": sans[:4], "plies": len(sans)}
 expect("row cut at 40 plies is never complete", build_report.blunders(truncated, evals)[1], False)
 
+# --- the deep check replaces the shown best move and drops what is not a blunder at depth -----
+real_deep = core.deep_evals
+b0 = chess.Board()
+for san in sans[:5]:
+    b0.push_san(san)
+before = core.key(b0)
+after_nf6 = b0.copy(); after_nf6.push_san("Nf6")
+blunder = {"fen": before + " 0 1", "played": "Nf6", "best": "g6", "before": -30, "after": -900, "loss": 870, "drop": 0.9}
+core.deep_evals = lambda keys: {before: {"cp": 30, "best": "Qe7"}, core.key(after_nf6): {"cp": 1000, "best": None}}
+checked = core.confirm_blunders("black", [blunder])
+expect("deep best move shown", checked[0]["best"], "Qe7")
+expect("deep evaluations, player side", (checked[0]["before"], checked[0]["after"]), (-30, -1000))
+core.deep_evals = lambda keys: {before: {"cp": 0, "best": "g6"}, core.key(after_nf6): {"cp": 40, "best": None}}
+expect("not a blunder at depth: dropped", core.confirm_blunders("black", [blunder]), [])
+core.deep_evals = lambda keys: {}
+expect("no Stockfish: kept as it was", core.confirm_blunders("black", [blunder]), [blunder])
+core.deep_evals = real_deep
+
 # --- puzzle ids never collide with the opening card of the same position and move -----------
 from teachess import drills  # noqa: E402
 same = {"fen": "x 0 1", "played": "Nf6"}

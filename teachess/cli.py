@@ -91,7 +91,7 @@ def data_review(args) -> dict:
     if not g:
         raise NotFound(f"No encuentro la partida «{args.game}». Usa una URL de chess.com, su número o «last».")
     core.evaluate_games([g], log=(lambda *_: None) if args.json else print)
-    return {**core.describe(g), **core.review(g)}
+    return {**core.describe(g), **core.review(g, deep=True)}
 
 
 def data_today(args) -> dict:

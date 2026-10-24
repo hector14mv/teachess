@@ -49,7 +49,7 @@ def save_state(state: dict) -> None:
 
 def lesson(g: dict, evals: dict, report: dict, due: int) -> dict:
     d = core.describe(g)
-    r = core.review(g, evals, report)
+    r = core.review(g, evals, report, deep=True)
     body = r["verdict"]
     if r["worst"] or (r["first"] and r["first"]["repeated"]):
         body += f" Está en tus tarjetas: {due} para hoy."

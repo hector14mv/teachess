@@ -39,6 +39,7 @@ DATA = ROOT / "data"
 GAMES = DATA / "games.jsonl"
 EVALS = DATA / "evals.json"
 REPORT = DATA / "report.json"
+PLAYER = DATA / "player"  # whose games this folder holds: one player per folder, never mixed
 DEEP = DATA / "deep.json"  # positions re-checked at DEEP_DEPTH: the best moves the player is shown
 MADRID = ZoneInfo("Europe/Madrid")
 PLIES = 24
@@ -123,7 +124,13 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
     except SystemExit as e:  # config.py is shared with the root scripts, which exit on a missing user
         raise SetupError(str(e.code)) from None
     with _lock:
+        owner = folder_player()
+        if owner and owner != user:
+            raise SetupError(f"Esta carpeta tiene las partidas de {owner}, no de {user}. Para seguir a {user}, "
+                             "instala teachess en otra carpeta.")
         fetch_games.RAW.mkdir(parents=True, exist_ok=True)
+        if not owner:
+            PLAYER.write_text(user + "\n")  # a folder from before this file adopts its current player
         current = date.today().strftime("%Y-%m")
         try:
             archives = fetch_games.get(f"https://api.chess.com/pub/player/{user}/games/archives")["archives"]
@@ -134,7 +141,10 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
                 if out.exists() and month != current:
                     continue
                 raw = fetch_games.get(url)["games"]
-                out.write_text(json.dumps({"games": raw}))
+                # Aside and swapped in: setup may be reading the cache while the watcher syncs
+                tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
+                tmp.write_text(json.dumps({"games": raw}))
+                tmp.replace(out)
                 fresh.extend(raw)
         except urllib.error.HTTPError as e:
             if e.code == 404:
@@ -199,6 +209,10 @@ def upgrade_games() -> int:
                 f.write(json.dumps(g) + "\n")
         tmp.replace(GAMES)
         return len(whole)
+
+
+def folder_player() -> str | None:
+    return (PLAYER.read_text().strip() or None) if PLAYER.exists() else None
 
 
 def drop_from_position() -> int:

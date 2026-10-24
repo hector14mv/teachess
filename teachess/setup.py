@@ -127,9 +127,14 @@ def ensure_user(user: str | None = None, interactive: bool = False) -> str:
     """The chess.com player this folder follows: given with --user, already configured, or asked. A new one is
     checked against chess.com and saved to config.json, so nobody has to edit a file."""
     cfg = dict(core.config.load())
-    current = (os.environ.get("TEACHESS_USER") or cfg.get("user") or "").lower()
+    env = (os.environ.get("TEACHESS_USER") or "").strip().lower()
+    if env and user and user.strip().lower() != env:
+        raise SetupError(f"TEACHESS_USER dice «{env}»: quítala o usa --user {env}.")
+    current = (env or cfg.get("user") or "").lower()
     if not user and current and current != "your_chesscom_username":
         return current
+    # The folder's player: recorded by sync, or for older folders the configured one if games are already here
+    owner = core.folder_player() or (current if current and core.GAMES.exists() else None)
     while True:
         if not user:
             if not interactive:
@@ -140,8 +145,8 @@ def ensure_user(user: str | None = None, interactive: bool = False) -> str:
         problem = None
         if not USERNAME.fullmatch(user):
             problem = f"«{user}» no parece un usuario de chess.com (letras, números, - y _)."
-        elif current and user != current and core.GAMES.exists():
-            raise SetupError(f"Esta carpeta ya tiene las partidas de {current}. Para seguir a {user}, "
+        elif owner and user != owner:
+            raise SetupError(f"Esta carpeta ya tiene las partidas de {owner}. Para seguir a {user}, "
                              "instala teachess en otra carpeta.")
         elif not player_exists(user):
             problem = f"chess.com no conoce al jugador «{user}»."

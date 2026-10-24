@@ -35,6 +35,7 @@ store = {}
 core.config.load = lambda: dict(store)
 core.config.save = lambda data: store.update(data)
 core.GAMES = tmp / "games.jsonl"
+core.PLAYER = tmp / "player"
 setup.player_exists = lambda u: u in {"magnus", "hector_14"}
 
 expect("non-interactive without a user says how", raises(lambda: setup.ensure_user()),
@@ -53,6 +54,19 @@ expect("asked until a real player", setup.ensure_user(interactive=True), "hector
 core.GAMES.write_text("{}\n")
 expect("folder of another player refused", "ya tiene las partidas de hector_14" in raises(lambda: setup.ensure_user("magnus")), True)
 expect("same player fine", setup.ensure_user("hector_14"), "hector_14")
+
+core.GAMES.unlink()
+core.PLAYER.write_text("hector_14\n")  # the folder's player, recorded by sync
+store.clear()
+expect("recorded player wins over an empty config", "ya tiene las partidas de hector_14" in raises(lambda: setup.ensure_user("magnus")), True)
+core.PLAYER.unlink()
+core.GAMES.write_text("{}\n")
+
+os.environ["TEACHESS_USER"] = "magnus"
+expect("--user against TEACHESS_USER refused", raises(lambda: setup.ensure_user("hector_14")),
+       "TEACHESS_USER dice «magnus»: quítala o usa --user magnus.")
+expect("TEACHESS_USER alone is the player", setup.ensure_user(), "magnus")
+os.environ.pop("TEACHESS_USER")
 
 store.clear(); store["user"] = "your_chesscom_username"
 core.GAMES.unlink()

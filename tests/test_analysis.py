@@ -136,6 +136,8 @@ core.load_games = lambda: [json.loads(line) for line in core.GAMES.read_text().s
 from_position = {**raw, "url": "fp", "initial_setup": "rnbqkbnr/pp1ppppp/8/2p5/4P3/2N5/PPPP1PPP/R1BQKBNR b KQkq - 2 2"}
 expect("from-position game not parsed", parse_games.parse(from_position), None)
 expect("standard game parsed", parse_games.parse(raw)["url"], "u1")
+fen_only = {**raw, "url": "fp2", "pgn": '[Event "x"]\n[SetUp "1"]\n[FEN "8/8/8/8/8/8/k7/K7 w - - 0 1"]\n\n*'}
+expect("from-position by the PGN tag only", parse_games.standard_start(fen_only), False)
 expect("one cut row completed", core.upgrade_games(), 1)
 after = {g["url"]: g for g in core.load_games()}
 expect("whole game now", len(after["u1"]["sans"]), 6)

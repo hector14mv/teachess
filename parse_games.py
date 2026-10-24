@@ -38,8 +38,11 @@ def standard_start(g: dict) -> bool:
     fen = g.get("initial_setup")
     if not fen:
         # The same reading parse() does, so both always agree on where a game starts
-        game = chess.pgn.read_game(io.StringIO(g.get("pgn") or ""))
-        fen = game.board().fen() if game else chess.STARTING_FEN
+        try:
+            game = chess.pgn.read_game(io.StringIO(g.get("pgn") or ""))
+            fen = game.board().fen() if game else chess.STARTING_FEN
+        except ValueError:  # a FEN header that is not a position: not a game we can replay
+            return False
     return fen.split()[:2] == STANDARD
 
 

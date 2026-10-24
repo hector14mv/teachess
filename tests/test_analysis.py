@@ -140,6 +140,9 @@ fen_only = {**raw, "url": "fp2", "pgn": '[Event "x"]\n[SetUp "1"]\n[FEN "8/8/8/8
 expect("from-position by the PGN tag only", parse_games.standard_start(fen_only), False)
 in_comment = {**raw, "url": "c1", "pgn": '[Event "x"]\n\n1. e4 { [FEN "8/8/8/8/8/8/k7/K7 w - - 0 1"] } e5 *'}
 expect("a FEN inside a comment is not the start", parse_games.standard_start(in_comment), True)
+broken_fen = {**raw, "url": "b1", "pgn": '[Event "x"]\n[SetUp "1"]\n[FEN "invalid"]\n\n*'}
+expect("an invalid FEN header is not a standard start", parse_games.standard_start(broken_fen), False)
+expect("and is not parsed", parse_games.parse(broken_fen), None)
 expect("one cut row completed", core.upgrade_games(), 1)
 after = {g["url"]: g for g in core.load_games()}
 expect("whole game now", len(after["u1"]["sans"]), 6)

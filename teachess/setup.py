@@ -156,6 +156,17 @@ def ensure_user(user: str | None = None, interactive: bool = False) -> str:
     return user
 
 
+def prepare(log=print) -> list[dict]:
+    """Download what is missing of the archive and tidy rows older versions stored, before any option is built."""
+    log("Descargando tus partidas de chess.com (la primera vez, mes a mes)…")
+    core.sync(log=log, analyse=False)
+    if n := core.upgrade_games():
+        log(f"{n} partidas releídas enteras (antes se guardaban solo las 20 primeras jugadas).")
+    if n := core.drop_from_position():
+        log(f"{n} partidas que no empiezan en la posición inicial, fuera del análisis.")
+    return core.load_games()
+
+
 def run(window: str | None = None, time_class: str | None = None, interactive: bool = False, log=print,
         user: str | None = None) -> dict:
     """Make sure there is a player, fetch the archive, pick the window (asked, given or recommended), save it
@@ -165,13 +176,7 @@ def run(window: str | None = None, time_class: str | None = None, interactive: b
     if not shutil.which("stockfish"):
         raise SetupError("Stockfish no está instalado (brew install stockfish o apt install stockfish).")
     ensure_user(user, interactive)
-    log("Descargando tus partidas de chess.com (la primera vez, mes a mes)…")
-    core.sync(log=log, analyse=False)
-    if n := core.upgrade_games():
-        log(f"{n} partidas releídas enteras (antes se guardaban solo las 20 primeras jugadas).")
-    if n := core.drop_from_position():
-        log(f"{n} partidas que no empiezan en la posición inicial, fuera del análisis.")
-    games = core.load_games()
+    games = prepare(log)
     if not games:
         raise SetupError("No hay partidas en tu archivo de chess.com.")
     o = options(games, time_class, measure=window is None)

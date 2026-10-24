@@ -242,7 +242,7 @@ def cmd_setup(args) -> None:
         # For agents: the options to show the player; call again with --window to analyse
         with contextlib.redirect_stdout(sys.stderr):
             setup.ensure_user(args.user)
-            o = setup.options(core.load_games() or _fetch_all(), args.time_class)
+            o = setup.options(setup.prepare(log=lambda *_: None), args.time_class)
         return emit(o)
     if args.json:
         with contextlib.redirect_stdout(sys.stderr):
@@ -250,11 +250,6 @@ def cmd_setup(args) -> None:
         return emit(r)
     show_setup(setup.run(args.window, args.time_class, interactive=sys.stdin.isatty() and not args.yes,
                          user=args.user), args)
-
-
-def _fetch_all() -> list[dict]:
-    core.sync(log=lambda *_: None, analyse=False)
-    return core.load_games()
 
 
 def cmd_dash(args) -> None:

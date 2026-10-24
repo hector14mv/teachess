@@ -143,6 +143,8 @@ expect("a FEN inside a comment is not the start", parse_games.standard_start(in_
 broken_fen = {**raw, "url": "b1", "pgn": '[Event "x"]\n[SetUp "1"]\n[FEN "invalid"]\n\n*'}
 expect("an invalid FEN header is not a standard start", parse_games.standard_start(broken_fen), False)
 expect("and is not parsed", parse_games.parse(broken_fen), None)
+says_standard = {**broken_fen, "url": "b2", "initial_setup": "rnbqkbnr/pppppppp/8/8/8/8/PPPPPPPP/RNBQKBNR w KQkq - 0 1"}
+expect("an invalid FEN header is skipped even if chess.com says standard", parse_games.parse(says_standard), None)
 expect("one cut row completed", core.upgrade_games(), 1)
 after = {g["url"]: g for g in core.load_games()}
 expect("whole game now", len(after["u1"]["sans"]), 6)

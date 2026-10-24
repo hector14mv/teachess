@@ -58,8 +58,11 @@ def parse(g: dict) -> dict | None:
     else:
         score, how = 0.0, me["result"]
 
-    game = chess.pgn.read_game(io.StringIO(g["pgn"]))
-    if game is None or game.board().fen() != chess.STARTING_FEN:
+    try:
+        game = chess.pgn.read_game(io.StringIO(g["pgn"]))
+        if game is None or game.board().fen() != chess.STARTING_FEN:
+            return None
+    except ValueError:  # a header that is not a position: whatever chess.com's fields say, not replayable
         return None
     sans, my_clocks, opp_clocks = [], [], []
     board = game.board()

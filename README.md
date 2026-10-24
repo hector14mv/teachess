@@ -1,36 +1,87 @@
 # teachess
 
-**Your chess.com games, from the terminal and in a live dashboard on localhost.**
+**A chess coach for your chess.com games that lives in your terminal and talks to Claude.**
 
-`teachess` downloads your games from chess.com, runs Stockfish over every move of the games you choose to
-analyse (the last three months, the last year or everything), and turns the result into a coach: it tells you where your games go wrong, which lines cost you
-points, drills the mistakes you keep repeating, and tells you to stop when you are on a losing streak.
+teachess downloads your games, runs Stockfish over every move, and after each game tells you where it went
+wrong. It turns your own blunders into puzzles, drills the opening mistakes you keep repeating, and tells you to
+stop when you are on a losing streak. Every command speaks JSON, so Claude Code (or any agent) can be your coach.
+Made in the spirit of [wallapop-cli](https://github.com/Microck/wallapop-cli): a CLI built for agents.
 
-![The dashboard on a losing night: two defeats in a row, time to stop](docs/screenshots/ahora.png)
+<p align="center">
+  <img src="docs/screenshots/lesson.png" width="480" alt="Move 30 of one of my games: the rook went to c3 (red) and the evaluation fell from +5.9 to -5.4; the right move, Rga3, is in green. Below, the winning chances move by move, with the drop at move 30.">
+</p>
 
-It started as a one-off analysis of my own 5,600 games. Three things came out of it, and the tool is built
-around them:
+## Install
 
-- **The first serious mistake comes early.** In 82 % of my games one move before move 12 lost 0.8 pawns or
-  more, and the median was move 6, right where my opening memory ends.
-- **The repertoire was not too narrow. It forked too early.** I played 1.e4 every game, then split across
-  four different third moves. Two of them scored 56–57 %, the other two 40–43 %.
-- **I played worse after a loss.** Starting a game within 45 minutes of a defeat scored 45.6 %; after a win, 56.1 %.
+You need Python 3.9 or newer and [Stockfish](https://stockfishchess.org/) (`brew install stockfish` on macOS,
+`apt install stockfish` on Debian/Ubuntu).
+
+```bash
+git clone https://github.com/hector14mv/teachess.git && cd teachess
+python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
+bin/teachess setup
+```
+
+`setup` asks for your chess.com username, downloads your archive and asks how much of it to analyse. The options
+are built from your own games: the time control you play most, how many games each window holds, and how long
+Stockfish takes on your machine (measured on a sample). It recommends the shortest window with about 300 games,
+because recent games say how you play now; with a small archive it analyses everything without asking. A first
+install takes about five minutes for 500 games.
+
+```
+¿Cuánto historial quieres que analice? Stockfish mira cada jugada.
+
+  1. Últimos 3 meses           481 partidas         ~4 min  ← recomendado
+  2. Último año              1.414 partidas        ~10 min
+  3. Últimos 3 años          2.165 partidas        ~14 min
+  4. Todo (desde 2021)       5.279 partidas        ~32 min
+```
+
+To use `teachess` from anywhere (and from Claude), put it on your `PATH`:
+`ln -s "$PWD/bin/teachess" ~/.local/bin/teachess`. Agents pass everything as flags:
+`teachess setup --user NAME --window 1y --json`, or `teachess setup --json` for the options.
+
+> The interface and the coaching text are in Spanish. The background notifier is a macOS service; on Linux, run
+> `teachess watch --once` from cron or a systemd timer every two minutes.
+
+## After every game
+
+<p align="center">
+  <img src="docs/screenshots/notifications.png" width="400" alt="Three teachess notifications on macOS: a loss with its verdict, the warning after two defeats in a row, and a win with its first serious mistake.">
+</p>
+
+`teachess watch install` adds a background service that checks chess.com every two minutes, with nothing open.
+When a game ends you get a notification with its lesson: the move that decided it and the right one, and whether
+it is a mistake you keep repeating. After two defeats in a row it tells you to stop for 45 minutes and review your
+cards instead. To get them on your phone too, install [ntfy](https://ntfy.sh), subscribe to a topic only you know
+and add `"notify": {"ntfy": "https://ntfy.sh/<topic>"}` to `config.json`; a tap opens the game.
+`teachess watch status` shows the service and its log; `teachess watch uninstall` removes it.
+
+## What it found in my games
+
+It started as an analysis of my own 5,600 games. A few things came out of it, and the tool is built around them:
+
+- **Most of my losses are decided by one blunder, and late.** 96 % of my losses have one, and in 69 % the worst
+  comes after move 12 (median: move 18). I thought I lost in the opening.
+- **The first serious mistake still comes early.** In 82 % of my games one move before move 12 loses 0.8 pawns
+  or more, right where my opening memory ends.
+- **I play worse after a loss.** Starting a game within 45 minutes of a defeat I score 46.6 % of the points;
+  after a win, 56.2 %.
 
 ## What you get
 
 | Command | What it does |
 |---|---|
-| `teachess dash` | Opens the dashboard on `http://localhost:4747` and watches chess.com every 2 minutes |
 | `teachess today` | Where you stand right now: current session, losing streak, whether you should stop |
 | `teachess games` | Your games (`--since 30d`, `--tc rapid\|blitz\|bullet\|daily\|all`) |
 | `teachess openings` | Your openings with the share of points and how often you go wrong before move 12 |
 | `teachess review [url\|last]` | Stockfish over one game: every costly move and what you should have played |
 | `teachess progress` | Month by month: rating, points, and how early your first serious mistake comes |
 | `teachess drill` | Spaced-repetition cards: your repeated opening mistakes and puzzles from your own blunders |
-| `teachess setup` | Asks how much of your history to analyse, with options built from your own archive, and analyses it |
+| `teachess setup` | Asks your username and how much of your history to analyse, with options built from your own archive |
 | `teachess sync` | Fetches new games, evaluates them and rebuilds the report |
-| `teachess watch install` | A background service that notifies you when a game ends (its first mistake) and when to stop |
+| `teachess watch install` | A background service that notifies you when a game ends (its lesson) and when to stop |
+| `teachess dash` | A local dashboard on `http://localhost:4747` (see below) |
 | `teachess coach` | Creates your coach folder and opens Claude Code in it (see below) |
 | `teachess skill install` | Teaches every Claude Code session how to use teachess |
 | `teachess mcp install claude-code\|claude-desktop` | Registers teachess as an MCP server, so Claude can call it as tools |
@@ -50,17 +101,6 @@ $ teachess today --json
 
 Exit codes are stable: `0` ok, `2` bad arguments, `3` setup missing (no username, no data yet), `4` game or card not
 found, `5` chess.com unreachable or rate-limiting. With `--json`, stderr carries `{"error": {"code", "exit", "message"}}`.
-
-## After every game
-
-`teachess watch install` adds a macOS background service (a LaunchAgent running `teachess watch --once` every two
-minutes) that checks chess.com even with the dashboard closed. When a rapid game ends you get a notification
-with its lesson: "Error on move 4.Bc4, the same one as in 11 games; the right move was 4.d4. It is in your cards."
-After two defeats in a row it tells you to stop for 45 minutes and review your cards instead. To get the same
-notifications on your phone, install [ntfy](https://ntfy.sh), subscribe to a topic only you know and add
-`"notify": {"ntfy": "https://ntfy.sh/<topic>"}` to `config.json`; a tap opens the game. `teachess watch status`
-shows the service and its log; `teachess watch uninstall` removes it. `teachess watch` runs the same loop in the
-foreground.
 
 ## Talk to Claude about your games
 
@@ -82,9 +122,9 @@ teachess gives an agent three ways in, from the lightest to the most complete:
 
 The coach folder and the MCP server work together: the folder's settings allow both the CLI and the MCP tools.
 
-### The dashboard
+## A dashboard, if you want one
 
-Four tabs, all built from your own games:
+`teachess dash` opens a local dashboard with four tabs, all built from your own games:
 
 - **Ahora (Now):** the state of your session, the losing-streak meter, your latest games. When you finish a game
   on chess.com it shows up within two minutes with Stockfish's verdict: "error on move 7, the same one as in
@@ -103,40 +143,9 @@ Four tabs, all built from your own games:
 
 `teachess dash --at 2026-10-15T02:47` replays a past moment offline, which is how these screenshots were taken.
 
-## Install
+## Settings
 
-You need Python 3.9 or newer and [Stockfish](https://stockfishchess.org/) on your `PATH`
-(`brew install stockfish` on macOS, `apt install stockfish` on Debian/Ubuntu).
-
-```bash
-git clone https://github.com/hector14mv/teachess.git
-cd teachess
-python3 -m venv .venv
-.venv/bin/pip install -r requirements.txt
-cp config.example.json config.json            # put your chess.com username in it
-ln -s "$PWD/bin/teachess" ~/.local/bin/teachess   # any directory on your PATH works
-teachess setup
-teachess dash
-```
-
-`setup` downloads your archive and asks how much of it to analyse. The options are built from your own games:
-the time control you play most, how many games each window holds, and how long Stockfish takes on your
-machine (measured on a sample). It recommends the shortest window with about 300 games, because recent games
-say how you play now; with a small archive it analyses everything without asking.
-
-```
-¿Cuánto historial quieres que analice? Stockfish mira cada jugada.
-
-  1. Últimos 3 meses           480 partidas         ~1 min  ← recomendado
-  2. Último año              1.413 partidas         ~1 min
-  3. Últimos 3 años          2.164 partidas         ~3 min
-  4. Todo (desde 2021)       5.278 partidas         ~8 min
-```
-
-You can change it later (`teachess setup --window all`); agents get the options with `teachess setup --json`
-and pass `--window`. After that, each `sync` only fetches the current month and evaluates the new games.
-
-Instead of `config.json` you can set `TEACHESS_USER=<username>`. `config.json` can also hold your own
+`setup` writes your username to `config.json`; you can also set `TEACHESS_USER=<username>`. `config.json` can also hold your own
 coaching notes for the Repertoire tab, keyed by colour and line (see `config.example.json`). A note's `move` is
 your plan for that position, and the drills follow it: a mistake you make with the planned move is not drilled,
 and where Stockfish prefers another move, the card asks for the plan's move instead.
@@ -168,12 +177,15 @@ chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
 
 `.venv/bin/python tests/test_watch.py` runs the watcher's scenarios (daylight saving time, several games between
 checks, one stop per streak, failed notifications, a corrupt state file, two watchers at once) on synthetic games;
-`tests/test_drills.py` covers the plan-aware deck (illegal plan moves, plan changes, cramped positions).
+`tests/test_drills.py` covers the plan-aware deck (illegal plan moves, plan changes, cramped positions),
+`tests/test_analysis.py` blunder detection, the depth-18 check and the setup options, and `tests/test_setup.py`
+the username step.
 
 ## Limits
 
-- The interface and the coaching text are in Spanish for now.
+- The interface and the coaching text are in Spanish for now; the background notifier is macOS only.
 - chess.com's monthly archive can lag behind a finished game by a few minutes.
+- Thematic and from-position games (they do not start from the usual first move) are left out of the analysis.
 - Stockfish runs at depth 12 over every move, enough to find the blunders. At that depth it can name a different
   best move from one run to the next when two moves are close, so every best move you are shown (a game's
   opening mistakes and blunders, the opening cards, the puzzles) is re-checked at depth 18 with a clean hash, and

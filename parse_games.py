@@ -32,16 +32,13 @@ def opening_name(eco_url: str) -> str:
 STANDARD = chess.STARTING_FEN.split()[:2]  # placement and side to move
 
 
-FEN_TAG = re.compile(r'\[FEN "([^"]+)"\]')
-
-
 def standard_start(g: dict) -> bool:
     """False for thematic or from-position games, which cannot be replayed from the usual first move: by
     chess.com's initial_setup, or else the PGN's own FEN tag."""
     fen = g.get("initial_setup")
     if not fen:
-        m = FEN_TAG.search(g.get("pgn") or "")
-        fen = m[1] if m else chess.STARTING_FEN
+        headers = chess.pgn.read_headers(io.StringIO(g.get("pgn") or ""))
+        fen = (headers or {}).get("FEN") or chess.STARTING_FEN
     return fen.split()[:2] == STANDARD
 
 

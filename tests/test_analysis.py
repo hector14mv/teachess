@@ -138,6 +138,8 @@ expect("from-position game not parsed", parse_games.parse(from_position), None)
 expect("standard game parsed", parse_games.parse(raw)["url"], "u1")
 fen_only = {**raw, "url": "fp2", "pgn": '[Event "x"]\n[SetUp "1"]\n[FEN "8/8/8/8/8/8/k7/K7 w - - 0 1"]\n\n*'}
 expect("from-position by the PGN tag only", parse_games.standard_start(fen_only), False)
+in_comment = {**raw, "url": "c1", "pgn": '[Event "x"]\n\n1. e4 { [FEN "8/8/8/8/8/8/k7/K7 w - - 0 1"] } e5 *'}
+expect("a FEN inside a comment is not the start", parse_games.standard_start(in_comment), True)
 expect("one cut row completed", core.upgrade_games(), 1)
 after = {g["url"]: g for g in core.load_games()}
 expect("whole game now", len(after["u1"]["sans"]), 6)
@@ -145,12 +147,25 @@ expect("fields the cache lacks are kept", (after["u1"]["my_acc"], after["u1"]["e
 expect("game missing from cache kept as it was", after["gone"], rows[1])
 expect("complete rows untouched", after["whole"], rows[2])
 expect("nothing left to recover", core.upgrade_games(), 0)
-(fetch_games.RAW / "2026-09.json").write_text(json.dumps({"games": [from_position]}))
+other_opponent = {**raw, "url": "u2", "black": {"username": "y", "rating": 1, "result": "resigned"}}
+(fetch_games.RAW / "2026-09.json").write_text(json.dumps({"games": [from_position, other_opponent]}))
 with open(core.GAMES, "a") as f:
     f.write(json.dumps({"url": "fp", "end": "2026-09-01T10:00:00+02:00", "sans": ["Nc6"], "plies": 1}) + "\n")
 expect("stored from-position row dropped", core.drop_from_position(), 1)
 expect("other rows kept", sorted(g["url"] for g in core.load_games()), ["gone", "u1", "whole"])
 core.load_games = real_load_games
+
+# --- one player per folder: an old folder's player is read from its cached games -------------
+core.PLAYER = tmp / "player"
+core.DATA = tmp
+expect("old folder: its cached player", core.cached_player(), "me")
+try:
+    core.claim_folder("someone_else")
+    expect("another player refused", "no error", "SetupError")
+except core.SetupError:
+    expect("another player refused", "SetupError", "SetupError")
+core.claim_folder("me", record=True)
+expect("the folder's player recorded", core.PLAYER.read_text().strip(), "me")
 
 # --- a window with no games is refused before anything is saved --------------------------------
 from teachess.errors import SetupError  # noqa: E402

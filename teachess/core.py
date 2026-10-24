@@ -124,16 +124,12 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
     except SystemExit as e:  # config.py is shared with the root scripts, which exit on a missing user
         raise SetupError(str(e.code)) from None
     with _lock:
-        owner = folder_player()
-        if owner and owner != user:
-            raise SetupError(f"Esta carpeta tiene las partidas de {owner}, no de {user}. Para seguir a {user}, "
-                             "instala teachess en otra carpeta.")
+        claim_folder(user)
         fetch_games.RAW.mkdir(parents=True, exist_ok=True)
-        if not owner:
-            PLAYER.write_text(user + "\n")  # a folder from before this file adopts its current player
         current = date.today().strftime("%Y-%m")
         try:
             archives = fetch_games.get(f"https://api.chess.com/pub/player/{user}/games/archives")["archives"]
+            claim_folder(user, record=True)  # chess.com knows the player: now the folder is theirs
             fresh = []
             for url in archives:
                 month = "-".join(url.rstrip("/").split("/")[-2:])
@@ -213,6 +209,31 @@ def upgrade_games() -> int:
 
 def folder_player() -> str | None:
     return (PLAYER.read_text().strip() or None) if PLAYER.exists() else None
+
+
+def cached_player() -> str | None:
+    """For folders from before data/player: the one username in every cached game, newest months first, read only
+    until it is clear (a month with one opponent leaves two candidates)."""
+    common = None
+    for f in sorted(fetch_games.RAW.glob("*.json"), reverse=True):
+        for g in json.loads(f.read_text())["games"]:
+            pair = {g["white"]["username"].lower(), g["black"]["username"].lower()}
+            common = pair if common is None else common & pair
+        if common is not None and len(common) <= 1:
+            break
+    return common.pop() if common and len(common) == 1 else None
+
+
+def claim_folder(user: str, record: bool = False) -> None:
+    """One player per folder, never mixed, whichever way the player was named (config.json or TEACHESS_USER).
+    The check and the record happen under the cross-process lock; record only once chess.com knows the player."""
+    with data_lock():
+        owner = folder_player() or (cached_player() if GAMES.exists() else None)
+        if owner and owner != user:
+            raise SetupError(f"Esta carpeta tiene las partidas de {owner}, no de {user}. Para seguir a {user}, "
+                             "instala teachess en otra carpeta.")
+        if record and not folder_player():
+            PLAYER.write_text(user + "\n")
 
 
 def drop_from_position() -> int:

@@ -169,6 +169,8 @@ def run(window: str | None = None, time_class: str | None = None, interactive: b
     core.sync(log=log, analyse=False)
     if n := core.upgrade_games():
         log(f"{n} partidas releídas enteras (antes se guardaban solo las 20 primeras jugadas).")
+    if n := core.drop_from_position():
+        log(f"{n} partidas que no empiezan en la posición inicial, fuera del análisis.")
     games = core.load_games()
     if not games:
         raise SetupError("No hay partidas en tu archivo de chess.com.")

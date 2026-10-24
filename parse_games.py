@@ -29,8 +29,16 @@ def opening_name(eco_url: str) -> str:
     return slug.replace("-", " ")
 
 
+STANDARD = chess.STARTING_FEN.split()[:2]  # placement and side to move
+
+
+def standard_start(g: dict) -> bool:
+    """False for thematic or from-position games, which cannot be replayed from the usual first move."""
+    return (g.get("initial_setup") or chess.STARTING_FEN).split()[:2] == STANDARD
+
+
 def parse(g: dict) -> dict | None:
-    if g.get("rules") != "chess" or "pgn" not in g:
+    if g.get("rules") != "chess" or "pgn" not in g or not standard_start(g):
         return None
     me_white = g["white"]["username"].lower() == USER
     me, opp = (g["white"], g["black"]) if me_white else (g["black"], g["white"])
@@ -42,6 +50,8 @@ def parse(g: dict) -> dict | None:
         score, how = 0.0, me["result"]
 
     game = chess.pgn.read_game(io.StringIO(g["pgn"]))
+    if game is None or game.board().fen() != chess.STARTING_FEN:
+        return None
     sans, my_clocks, opp_clocks = [], [], []
     board = game.board()
     for i, node in enumerate(game.mainline()):

@@ -133,6 +133,9 @@ rows = [{"url": "u1", "end": "2026-10-09T10:00:00+02:00", "sans": ["e4"], "plies
 core.GAMES.write_text("".join(json.dumps(r) + "\n" for r in rows))
 real_load_games = core.load_games
 core.load_games = lambda: [json.loads(line) for line in core.GAMES.read_text().splitlines()]
+from_position = {**raw, "url": "fp", "initial_setup": "rnbqkbnr/pp1ppppp/8/2p5/4P3/2N5/PPPP1PPP/R1BQKBNR b KQkq - 2 2"}
+expect("from-position game not parsed", parse_games.parse(from_position), None)
+expect("standard game parsed", parse_games.parse(raw)["url"], "u1")
 expect("one cut row completed", core.upgrade_games(), 1)
 after = {g["url"]: g for g in core.load_games()}
 expect("whole game now", len(after["u1"]["sans"]), 6)
@@ -140,6 +143,11 @@ expect("fields the cache lacks are kept", (after["u1"]["my_acc"], after["u1"]["e
 expect("game missing from cache kept as it was", after["gone"], rows[1])
 expect("complete rows untouched", after["whole"], rows[2])
 expect("nothing left to recover", core.upgrade_games(), 0)
+(fetch_games.RAW / "2026-09.json").write_text(json.dumps({"games": [from_position]}))
+with open(core.GAMES, "a") as f:
+    f.write(json.dumps({"url": "fp", "end": "2026-09-01T10:00:00+02:00", "sans": ["Nc6"], "plies": 1}) + "\n")
+expect("stored from-position row dropped", core.drop_from_position(), 1)
+expect("other rows kept", sorted(g["url"] for g in core.load_games()), ["gone", "u1", "whole"])
 core.load_games = real_load_games
 
 # --- a window with no games is refused before anything is saved --------------------------------
@@ -147,6 +155,7 @@ from teachess.errors import SetupError  # noqa: E402
 old_games = games({"rapid": 50}, 30)[:100]  # only games from more than a year ago
 core.sync = lambda **kw: []
 core.upgrade_games = lambda: False
+core.drop_from_position = lambda: 0
 core.load_games = lambda: old_games
 saved = []
 core.config.save = saved.append

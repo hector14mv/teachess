@@ -201,6 +201,24 @@ def upgrade_games() -> int:
         return len(whole)
 
 
+def drop_from_position() -> int:
+    """Remove rows of thematic or from-position games, which versions before 2026-10-24 kept and which cannot be
+    replayed from the usual first move. Run by `teachess setup`. Returns how many rows went."""
+    with _lock:
+        odd = {raw.get("url") for f in sorted(fetch_games.RAW.glob("*.json"))
+               for raw in json.loads(f.read_text())["games"] if not parse_games.standard_start(raw)}
+        games = load_games()
+        kept = [g for g in games if g["url"] not in odd]
+        if len(kept) == len(games):
+            return 0
+        tmp = GAMES.with_suffix(".tmp")
+        with open(tmp, "w") as f:
+            for g in kept:
+                f.write(json.dumps(g) + "\n")
+        tmp.replace(GAMES)
+        return len(games) - len(kept)
+
+
 def rebuild_report() -> None:
     build_report.SINCE, build_report.TIME_CLASS = window_since(), tc()
     with data_lock():

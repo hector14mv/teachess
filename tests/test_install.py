@@ -125,6 +125,16 @@ for i in range(1, 9):
 bar.close()
 check("quarters", out.getvalue().splitlines(), ["Analizando: 25 %", "Analizando: 50 %", "Analizando: 75 %",
                                                  "Analizando: 100 %"])
+# on a terminal the line always fits, or it wraps and every update lands on a new line
+for cols in (120, 72, 50, 30, 12):
+    line = progress.render("Comprobando a fondo las jugadas buenas", 21, 100, ["quedan ~1 min", "21/100 jugadas"], cols)
+    check(f"fits in {cols} columns", len(line) <= cols - 1, True)
+check("wide keeps everything", progress.render("Analizando", 5, 10, ["quedan ~1 min"], 120),
+      "Analizando  " + "█" * 12 + "░" * 12 + "   50 %  · quedan ~1 min")
+check("narrow drops the count first",
+      "quedan" in progress.render("Analizando tus partidas", 5, 10, ["quedan ~1 min", "5/10 meses"], 60)
+      and "meses" not in progress.render("Analizando tus partidas", 5, 10, ["quedan ~1 min", "5/10 meses"], 60), True)
+
 progress.QUIET = True
 out = io.StringIO()
 bar = progress.Bar("Analizando", 8, stream=out)

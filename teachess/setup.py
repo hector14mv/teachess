@@ -274,7 +274,7 @@ def prepare(user: str, time_class: str | None = None, log=print, show: bool = Fa
         return tidy(log), s
     if not s["totals"]:  # no shortcut: the whole archive, as versions before 0.1.0 did
         log("Descargando tus partidas de chess.com…")
-        core.sync(user, log=log, analyse=False, show=show)
+        core.sync(user, log=log, analyse=False, since_month="0000-00", show=show)  # all of it, whatever the window
         return tidy(log), s
     if not show:
         log("Descargando tus últimas partidas…")

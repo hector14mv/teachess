@@ -344,9 +344,14 @@ function getLine(side, path) {
 
 function arrowsSvg(list, flip) {
   const xy = sq => { const f = sq.charCodeAt(0) - 97, r = +sq[1] - 1; return flip ? [7 - f + .5, r + .5] : [f + .5, 7 - r + .5]; };
+  // Moves between the same two squares (a promotion to a queen or a knight) sit side by side, not on top of each other
+  const same = {}, seen = {};
+  list.forEach(a => { const k = a.squares.join(); same[k] = (same[k] || 0) + 1; });
   const shapes = list.map(a => {
-    const [x1, y1] = xy(a.squares[0]), [x2, y2] = xy(a.squares[1]);
+    const key = a.squares.join(), i = seen[key] = (seen[key] ?? -1) + 1, shift = (i - (same[key] - 1) / 2) * .26;
+    let [x1, y1] = xy(a.squares[0]), [x2, y2] = xy(a.squares[1]);
     const len = Math.hypot(x2 - x1, y2 - y1), ux = (x2 - x1) / len, uy = (y2 - y1) / len;
+    x1 -= uy * shift; y1 += ux * shift; x2 -= uy * shift; y2 += ux * shift;
     const head = .42, half = Math.max(.2, a.width * 1.7);
     const bx = x2 - ux * head, by = y2 - uy * head;
     const sx = x1 + ux * .18, sy = y1 + uy * .18;
@@ -532,6 +537,7 @@ async function pick(san) {
   S.hover = null;  // the answer's arrows must not stay dimmed under a hover from before the click
   render();
   S.answer = await j('/api/drill', { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ id: c.id, san }) });
+  S.hover = null;  // a hover while the answer was on its way
   render();
 }
 

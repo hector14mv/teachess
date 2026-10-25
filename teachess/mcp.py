@@ -16,10 +16,10 @@ import sys
 import traceback
 from pathlib import Path
 
-from . import cli, core
+from . import cli, core, paths
 from .errors import SetupError, TeachessError, UsageError
 
-BIN = core.ROOT / "bin" / "teachess"
+BIN = paths.command()
 STATUS_TEXT = {"created": "instalado", "updated": "actualizado", "unchanged": "ya estaba instalado"}
 INSTRUCTIONS = """\
 teachess reads the user's own chess.com games, evaluated by Stockfish move by move over the window chosen at

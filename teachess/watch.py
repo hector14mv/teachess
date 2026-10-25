@@ -18,7 +18,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from . import core, drills, notify
+from . import core, drills, notify, paths
 from .errors import SetupError, TeachessError
 
 STATE = core.DATA / "watch_state.json"
@@ -27,7 +27,7 @@ LOCK = core.DATA / "watch.lock"
 LABEL = "dev.teachess.watch"
 POLL_SECONDS = 120
 FRESH_HOURS = 3  # a game first seen later than this (the laptop was asleep) is not worth a notification
-BIN = core.ROOT / "bin" / "teachess"
+BIN = paths.command()
 
 
 def load_state() -> dict:
@@ -62,7 +62,7 @@ def check(live: bool = True, at: datetime | None = None, send=notify.send) -> li
 
     Only one check runs at a time (the service and a foreground watcher share the state), and the state moves
     on only after the notifications went out, so a crash or a channel that is down repeats a notification rather than losing it."""
-    core.DATA.mkdir(exist_ok=True)
+    core.DATA.mkdir(parents=True, exist_ok=True)
     with open(LOCK, "w") as lock:
         try:
             fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
@@ -151,7 +151,7 @@ def install() -> dict:
     }
     text = plistlib.dumps(plist)
     status = "unchanged" if path.exists() and path.read_bytes() == text else ("updated" if path.exists() else "created")
-    core.DATA.mkdir(exist_ok=True)
+    core.DATA.mkdir(parents=True, exist_ok=True)
     if status != "unchanged":
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_bytes(text)

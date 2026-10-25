@@ -17,3 +17,8 @@ render_page.py
 
 # Scratch notes
 implementation-notes.md
+
+# Packaging output
+build/
+dist/
+*.egg-info/

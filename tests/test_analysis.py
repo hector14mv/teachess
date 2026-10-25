@@ -2,14 +2,17 @@
 
 Run: .venv/bin/python tests/test_analysis.py
 """
+import os
 import pathlib
+import tempfile
 import sys
 from datetime import date, timedelta
 
+os.environ["TEACHESS_HOME"] = tempfile.mkdtemp()  # never the real games or config
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 import chess  # noqa: E402
 
-import build_report  # noqa: E402
+from teachess import build_report  # noqa: E402
 from teachess import core, setup  # noqa: E402
 
 ok = True
@@ -115,8 +118,8 @@ expect("tiny archive: everything", tiny["recommended"], tiny["options"][-1]["win
 # --- setup's re-read of cut rows: only cut rows change, old fields survive --------------------
 import json  # noqa: E402
 import tempfile  # noqa: E402
-import fetch_games  # noqa: E402
-import parse_games  # noqa: E402
+from teachess import fetch_games  # noqa: E402
+from teachess import parse_games  # noqa: E402
 tmp = pathlib.Path(tempfile.mkdtemp())
 core.GAMES, fetch_games.RAW = tmp / "games.jsonl", tmp / "raw"
 fetch_games.RAW.mkdir()

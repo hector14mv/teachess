@@ -13,13 +13,13 @@ import shutil
 import sys
 from functools import partial
 from multiprocessing import Pool
-from pathlib import Path
 
 import chess
 import chess.engine
 
-ROOT = Path(__file__).parent
-OUT = ROOT / "data" / "evals.json"
+from . import paths, progress
+
+OUT = paths.DATA / "evals.json"
 SINCE = "2025-10-15"
 PLIES = 24  # None: every move of the game
 DEPTH = 14
@@ -53,7 +53,7 @@ def evaluate(fen: str, depth: int = DEPTH) -> tuple[str, dict]:
 def main() -> None:
     evals = json.loads(OUT.read_text()) if OUT.exists() else {}
     todo = set()
-    for line in open(ROOT / "data" / "games.jsonl"):
+    for line in open(paths.DATA / "games.jsonl"):
         g = json.loads(line)
         if g["time_class"] != TIME_CLASS or g["end"] < SINCE:
             continue
@@ -63,15 +63,15 @@ def main() -> None:
             board.push_san(san)
             todo.add(key(board))
     todo -= evals.keys()
-    print(f"{len(todo)} positions to evaluate at depth {DEPTH}", flush=True)
+    bar = progress.Bar("Analizando tus partidas", len(todo))
     with Pool(max(1, (os.cpu_count() or 2) - 1)) as pool:
         for i, (fen, ev) in enumerate(pool.imap_unordered(partial(evaluate, depth=DEPTH), sorted(todo), chunksize=32), 1):
             evals[fen] = ev
+            bar.update(i)
             if i % 1000 == 0:
-                print(f"  {i}/{len(todo)}", flush=True)
                 OUT.write_text(json.dumps(evals))
+    bar.close()
     OUT.write_text(json.dumps(evals))
-    print(f"done: {len(evals)} positions in {OUT.name}")
 
 
 if __name__ == "__main__":

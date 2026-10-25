@@ -8,9 +8,9 @@ from __future__ import annotations
 
 import json
 import os
-from pathlib import Path
+from . import paths
 
-PATH = Path(__file__).parent / "config.json"
+PATH = paths.CONFIG
 
 
 _cache: tuple[float, dict] = (0.0, {})
@@ -28,6 +28,7 @@ def load() -> dict:
 
 
 def save(data: dict) -> None:
+    PATH.parent.mkdir(parents=True, exist_ok=True)
     tmp = PATH.with_suffix(".tmp")
     tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n")
     tmp.replace(PATH)

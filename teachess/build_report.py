@@ -13,11 +13,10 @@ import statistics as st
 import sys
 from collections import Counter, defaultdict
 from datetime import datetime
-from pathlib import Path
 
 import chess
 
-ROOT = Path(__file__).parent
+from . import paths
 SINCE = "2025-10-15"
 TIME_CLASS = "rapid"
 PLIES = 24
@@ -113,8 +112,8 @@ def pct(xs) -> float:
 
 
 def main() -> None:
-    games = [json.loads(l) for l in open(ROOT / "data" / "games.jsonl")]
-    evals = json.loads((ROOT / "data" / "evals.json").read_text())
+    games = [json.loads(l) for l in open(paths.DATA / "games.jsonl")]
+    evals = json.loads((paths.DATA / "evals.json").read_text())
     rapid = [g for g in games if g["time_class"] == TIME_CLASS]
     rec = [g for g in rapid if g["end"] >= SINCE]
 
@@ -373,7 +372,7 @@ def main() -> None:
         },
     }
     # Write aside and swap, so a reader (the dashboard, the watcher) never sees a half-written report
-    out = ROOT / "data" / "report.json"
+    out = paths.DATA / "report.json"
     tmp = out.with_name(f"report.json.{os.getpid()}.tmp")
     tmp.write_text(json.dumps(report, ensure_ascii=False))
     tmp.replace(out)

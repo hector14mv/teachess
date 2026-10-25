@@ -15,7 +15,7 @@ from datetime import date, datetime, timedelta
 
 import chess
 
-from . import core, drills
+from . import core, drills, paths, progress
 from .errors import NotFound, TeachessError, UsageError
 
 USE_COLOR = sys.stdout.isatty()
@@ -242,8 +242,9 @@ def cmd_setup(args) -> None:
     if args.json and not args.window:
         # For agents: the options to show the player; call again with --window to analyse
         with contextlib.redirect_stdout(sys.stderr):
-            setup.ensure_user(args.user)
-            o = setup.options(setup.prepare(log=lambda *_: None), args.time_class)
+            user = setup.ensure_user(args.user)
+            games, survey = setup.prepare(user, args.time_class, log=lambda *_: None)
+            o = setup.options(games, args.time_class, s=survey)
         return emit(o)
     if args.json:
         with contextlib.redirect_stdout(sys.stderr):
@@ -422,8 +423,16 @@ def fail(e: TeachessError, as_json: bool) -> None:
 
 def main(argv: list[str] | None = None) -> None:
     argv = sys.argv[1:] if argv is None else argv
+    paths.migrate(log=lambda m: print(m, file=sys.stderr))
+    if not argv:
+        if sys.stdin.isatty() and sys.stdout.isatty() and not core.config.load().get("analysis"):
+            argv = ["setup"]  # a fresh install: bare `teachess` (what Homebrew tells you to run) sets it up
+        else:
+            build_parser().print_help()
+            return
     try:
         args = build_parser().parse_args(argv)
+        progress.QUIET = args.json  # agents read the result, not the bars
         args.fn(args)
     except TeachessError as e:
         fail(e, "--json" in argv)

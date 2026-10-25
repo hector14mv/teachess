@@ -2,9 +2,10 @@
 
 Run: .venv/bin/python tests/test_watch.py
 """
-import pathlib, sys, tempfile
+import os, pathlib, sys, tempfile
 from datetime import datetime, timedelta
 from zoneinfo import ZoneInfo
+os.environ["TEACHESS_HOME"] = tempfile.mkdtemp()  # never the real games or config
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from teachess import watch, core, drills
 

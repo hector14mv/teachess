@@ -12,7 +12,6 @@ import json
 import os
 import shutil
 import statistics
-import sys
 import threading
 from collections import Counter, defaultdict
 from datetime import date, datetime, timedelta
@@ -26,16 +25,10 @@ import chess.engine
 
 from .errors import SetupError, Unreachable
 
-ROOT = Path(__file__).resolve().parent.parent
-sys.path.insert(0, str(ROOT))
+from . import build_report, config, engine_eval, fetch_games, parse_games, paths
+from .progress import Bar
 
-import build_report  # noqa: E402
-import config  # noqa: E402
-import engine_eval  # noqa: E402
-import fetch_games  # noqa: E402
-import parse_games  # noqa: E402
-
-DATA = ROOT / "data"
+DATA = paths.DATA
 GAMES = DATA / "games.jsonl"
 EVALS = DATA / "evals.json"
 REPORT = DATA / "report.json"
@@ -116,9 +109,13 @@ def key(board: chess.Board) -> str:
 
 # --- sync ------------------------------------------------------------------------------------
 
-def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]:
+def sync(user: str | None = None, log=print, analyse: bool = True, since_month: str | None = None,
+         show: bool = False) -> list[dict]:
     """Fetch the current month (and any month not cached yet), merge new games, evaluate them move by
-    move and rebuild the report (analyse=False stops after the merge). Returns the new games, oldest first."""
+    move and rebuild the report (analyse=False stops after the merge). Returns the new games, oldest first.
+
+    since_month ("YYYY-MM") leaves older months for a later sync: setup downloads only the window it needs.
+    show draws a progress bar over the months to download."""
     try:
         user = user or config.chess_user()
     except SystemExit as e:  # config.py is shared with the root scripts, which exit on a missing user
@@ -130,18 +127,25 @@ def sync(user: str | None = None, log=print, analyse: bool = True) -> list[dict]
         try:
             archives = fetch_games.get(f"https://api.chess.com/pub/player/{user}/games/archives")["archives"]
             claim_folder(user, record=True)  # chess.com knows the player: now the folder is theirs
-            fresh = []
+            fresh, due = [], []
             for url in archives:
                 month = "-".join(url.rstrip("/").split("/")[-2:])
                 out = fetch_games.RAW / f"{month}.json"
-                if out.exists() and month != current:
+                if (out.exists() and month != current) or (since_month and month < since_month):
                     continue
+                due.append((url, out))
+            bar = Bar("Descargando tus partidas", len(due), "meses") if show and len(due) > 1 else None
+            for i, (url, out) in enumerate(due, 1):
                 raw = fetch_games.get(url)["games"]
                 # Aside and swapped in: setup may be reading the cache while the watcher syncs
                 tmp = out.with_name(f"{out.name}.{os.getpid()}.tmp")
                 tmp.write_text(json.dumps({"games": raw}))
                 tmp.replace(out)
                 fresh.extend(raw)
+                if bar:
+                    bar.update(i)
+            if bar:
+                bar.close()
         except urllib.error.HTTPError as e:
             if e.code == 404:
                 raise SetupError(f"chess.com no conoce al jugador «{user}».") from None
@@ -232,11 +236,11 @@ def claim_folder(user: str, record: bool = False) -> None:
         if not owner and (GAMES.exists() or any(fetch_games.RAW.glob("*.json"))):
             owner = cached_player()
             if owner is None:  # games here, but no single player in all of them: adopt nobody
-                raise SetupError("No sé de quién son las partidas de esta carpeta. Instala teachess en otra carpeta "
-                                 "para seguir a un jugador.")
+                raise SetupError(f"No sé de quién son las partidas de {DATA}. Usa otra carpeta de datos para "
+                                 f"seguir a un jugador: TEACHESS_HOME=~/teachess-{user} teachess setup")
         if owner and owner != user:
-            raise SetupError(f"Esta carpeta tiene las partidas de {owner}, no de {user}. Para seguir a {user}, "
-                             "instala teachess en otra carpeta.")
+            raise SetupError(f"Tus datos de teachess son de {owner}, no de {user}. Para seguir a {user}, "
+                             f"usa otra carpeta de datos: TEACHESS_HOME=~/teachess-{user} teachess setup")
         if record and not folder_player():
             PLAYER.write_text(user + "\n")
 
@@ -259,11 +263,11 @@ def drop_from_position() -> int:
         return len(games) - len(kept)
 
 
-def rebuild_report() -> None:
+def rebuild_report(show: bool = False) -> None:
     build_report.SINCE, build_report.TIME_CLASS = window_since(), tc()
     with data_lock():
         build_report.main()
-    deepen_report()
+    deepen_report(show)
 
 
 # --- deep check of what the player is shown ---------------------------------------------------
@@ -272,7 +276,7 @@ def rebuild_report() -> None:
 def data_lock():
     """One process at a time writes report.json and deep.json (the background watcher, the dashboard and the
     CLI may all rebuild). Held only around reading and writing those files, never around Stockfish."""
-    DATA.mkdir(exist_ok=True)
+    DATA.mkdir(parents=True, exist_ok=True)
     with open(DATA / "data.lock", "w") as lock:
         fcntl.flock(lock, fcntl.LOCK_EX)
         try:
@@ -358,7 +362,7 @@ def confirm_blunders(color: str, found: list[dict], compute: bool = True) -> lis
     return confirm(color, found, is_blunder, compute)
 
 
-def deepen_report() -> None:
+def deepen_report(show: bool = False) -> None:
     """Re-check what the report shows as right answers at DEEP_DEPTH: the puzzles (still a blunder?) and the
     opening cards (still a mistake of MISTAKE_CP?). Each takes the deep best move; what no longer counts at that
     depth is dropped. Stockfish runs first, outside the lock; then the report as it is now (maybe newer) is
@@ -366,9 +370,14 @@ def deepen_report() -> None:
     groups = (("puzzles", is_blunder), ("drills", is_mistake))
     item = lambda c: {"fen": c["fen"], "played": c["played"], "best": c["best"]}
     report = load_report()
-    for name, counts in groups:
-        for c in report.get(name, []):
-            confirm(c["color"], [item(c)], counts)
+    items = [(c, counts) for name, counts in groups for c in report.get(name, [])]
+    bar = Bar("Comprobando a fondo las jugadas buenas", len(items)) if show and items else None
+    for i, (c, counts) in enumerate(items, 1):
+        confirm(c["color"], [item(c)], counts)
+        if bar:
+            bar.update(i)
+    if bar:
+        bar.close()
     with data_lock():
         report = load_report()
         if not report:
@@ -407,7 +416,9 @@ def evaluate_games(games: list[dict], plies: int | None = None, log=print) -> No
         return
     if len(todo) > BULK:
         # First run or a long break: the parallel batch evaluator is much faster.
-        log(f"Stockfish: evaluando {len(todo)} posiciones en paralelo (la primera vez tarda un rato)…")
+        n_games, n_positions = (f"{n:,}".replace(",", ".") for n in (len(games), len(todo)))
+        log(f"Stockfish revisa cada jugada de {n_games} partidas ({n_positions} posiciones), "
+            f"calculando unas {DEPTH} jugadas por delante en cada una.")
         engine_eval.SINCE, engine_eval.PLIES, engine_eval.DEPTH = window_since(), plies, DEPTH
         engine_eval.TIME_CLASS = tc()
         engine_eval.main()
@@ -417,10 +428,13 @@ def evaluate_games(games: list[dict], plies: int | None = None, log=print) -> No
         log("Stockfish no está instalado (brew install stockfish): sin evaluaciones nuevas.")
         return
     log(f"Stockfish: evaluando {len(todo)} posiciones…")
+    bar = Bar("Analizando", len(todo)) if len(todo) >= 200 else None
     engine = chess.engine.SimpleEngine.popen_uci(path)
     try:
         engine.configure({"Threads": 2, "Hash": 64})
-        for fen in todo:
+        for i, fen in enumerate(todo, 1):
+            if bar:
+                bar.update(i)
             board = chess.Board(fen + " 0 1")
             if board.is_game_over():
                 outcome = board.outcome()
@@ -432,6 +446,8 @@ def evaluate_games(games: list[dict], plies: int | None = None, log=print) -> No
             evals[fen] = {"cp": cp, "best": board.san(info["pv"][0]) if info.get("pv") else None}
     finally:
         engine.quit()
+        if bar:
+            bar.close()
     EVALS.write_text(json.dumps(evals))
 
 

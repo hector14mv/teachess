@@ -1,0 +1,27 @@
+[build-system]
+requires = ["setuptools>=61"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "teachess"
+dynamic = ["version"]
+description = "A chess coach for your chess.com games that lives in your terminal and talks to Claude."
+readme = "README.md"
+license = { text = "MIT" }
+requires-python = ">=3.9"
+dependencies = ["chess>=1.11,<2"]
+
+[project.urls]
+Homepage = "https://github.com/hector14mv/teachess"
+
+[project.scripts]
+teachess = "teachess.cli:main"
+
+[tool.setuptools]
+packages = ["teachess"]
+
+[tool.setuptools.dynamic]
+version = { attr = "teachess.__version__" }
+
+[tool.setuptools.package-data]
+teachess = ["static/*", "templates/*"]

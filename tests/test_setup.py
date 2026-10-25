@@ -8,6 +8,7 @@ import pathlib
 import sys
 import tempfile
 
+os.environ["TEACHESS_HOME"] = tempfile.mkdtemp()  # never the real games or config
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from teachess import core, setup  # noqa: E402
 from teachess.errors import SetupError  # noqa: E402

@@ -10,15 +10,13 @@ import json
 import re
 import sys
 from datetime import datetime, timezone
-from pathlib import Path
 from zoneinfo import ZoneInfo
 
 import chess.pgn
 
-import config
+from . import config, paths
 
 USER = ""  # set by main() or by the caller before parse()
-ROOT = Path(__file__).parent
 MADRID = ZoneInfo("Europe/Madrid")
 CLK = re.compile(r"\[%clk (\d+):(\d+):([\d.]+)\]")
 DRAWS = {"agreed", "repetition", "stalemate", "insufficient", "50move", "timevsinsufficient"}
@@ -101,13 +99,13 @@ def parse(g: dict) -> dict | None:
 
 def main() -> None:
     rows = []
-    for f in sorted((ROOT / "data" / "raw").glob("*.json")):
+    for f in sorted((paths.DATA / "raw").glob("*.json")):
         for g in json.loads(f.read_text())["games"]:
             r = parse(g)
             if r:
                 rows.append(r)
     rows.sort(key=lambda r: datetime.fromisoformat(r["end"]))  # by the moment, not the offset's text
-    with open(ROOT / "data" / "games.jsonl", "w") as out:
+    with open(paths.DATA / "games.jsonl", "w") as out:
         for r in rows:
             out.write(json.dumps(r) + "\n")
     print(f"{len(rows)} games -> data/games.jsonl")

@@ -53,13 +53,13 @@ store.clear()
 expect("asked until a real player", setup.ensure_user(interactive=True), "hector_14")
 
 core.GAMES.write_text("{}\n")
-expect("folder of another player refused", "ya tiene las partidas de hector_14" in raises(lambda: setup.ensure_user("magnus")), True)
+expect("folder of another player refused", "ya son de hector_14" in raises(lambda: setup.ensure_user("magnus")), True)
 expect("same player fine", setup.ensure_user("hector_14"), "hector_14")
 
 core.GAMES.unlink()
 core.PLAYER.write_text("hector_14\n")  # the folder's player, recorded by sync
 store.clear()
-expect("recorded player wins over an empty config", "ya tiene las partidas de hector_14" in raises(lambda: setup.ensure_user("magnus")), True)
+expect("recorded player wins over an empty config", "ya son de hector_14" in raises(lambda: setup.ensure_user("magnus")), True)
 core.PLAYER.unlink()
 core.GAMES.write_text("{}\n")
 

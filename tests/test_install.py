@@ -53,12 +53,33 @@ check("cut move resumes", paths.migrate(log=lambda m: None), True)
 check("resumed with both", sorted(p.name for p in (home2 / "data").iterdir()), ["evals.json", "games.jsonl"])
 os.environ["TEACHESS_HOME"] = saved
 
+# a copy across disks lands whole: os.rename fails with EXDEV, the copy goes through a .partial name
+import errno  # noqa: E402
+real_rename, calls = os.rename, []
+
+
+def cross_disk(src, dst):
+    calls.append(pathlib.Path(dst).name)
+    if not str(dst).endswith(".partial") and len(calls) == 1:
+        raise OSError(errno.EXDEV, "cross-device link")
+    return real_rename(src, dst)
+
+
+src_dir = tmp / "src_raw"
+src_dir.mkdir()
+(src_dir / "2026-10.json").write_text("{}")
+os.rename = cross_disk
+paths._move(src_dir, tmp / "dst_raw")
+os.rename = real_rename
+check("cross-disk copy via .partial", calls, ["dst_raw", "dst_raw"])
+check("cross-disk copy complete", (tmp / "dst_raw" / "2026-10.json").exists() and not src_dir.exists(), True)
+
 # --- covered: from which month the archive is downloaded ---
 raw = pathlib.Path(tempfile.mkdtemp())
 core.fetch_games.RAW = raw
 survey = {"months": {m: f"u/{m}" for m in ["2024-01", "2024-02", "2026-09", "2026-10"]},
           "totals": {"rapid": 100, "blitz": 0, "bullet": 0, "daily": 0}}
-check("nothing downloaded", setup.covered(survey) >= "2026-10", True)
+check("nothing downloaded", setup.covered(survey), "9999-99")
 for m in ["2026-09", "2026-10"]:
     (raw / f"{m}.json").write_text(json.dumps({"games": [{"time_class": "rapid"}] * 10}))
 check("newest two", setup.covered(survey), "2026-09")
@@ -73,6 +94,28 @@ sizes = {"u/2026-09": 1000, "u/2026-10": 1000, "u/2024-01": 3000, "u/2024-02": 1
 core.fetch_games.size = lambda url: sizes[url]
 survey["totals"] = {"rapid": 60, "blitz": 20, "bullet": 0, "daily": 0}  # 20 rapid downloaded: 40 rapid, 20 blitz left
 check("estimate", setup.estimate(survey, "rapid", "2024-01", "2026-09"), round(4000 / 100 * 40 / 60))
+
+# --- options: a window not downloaded yet never looks analysed, even when the known one is ---
+import chess  # noqa: E402
+from datetime import date  # noqa: E402
+
+today = date.today().isoformat() + "T12:00:00+02:00"
+games = [{"time_class": "rapid", "end": today, "sans": ["e4", "e5", "Nf3"], "url": f"g{i}"} for i in range(3)]
+evaluated = {}
+board = chess.Board()
+evaluated[core.key(board)] = {"cp": 0, "best": "e4"}
+for san in ["e4", "e5", "Nf3"]:
+    board.push_san(san)
+    evaluated[core.key(board)] = {"cp": 0, "best": None}
+core.load_evals = lambda: evaluated
+setup.covered = lambda s: setup.month("3m")
+setup.estimate = lambda s, tc, since, cover: 50
+current = date.today().strftime("%Y-%m")
+survey = {"months": {"2020-01": "a", current: "b"}, "totals": {"rapid": 500, "blitz": 0, "bullet": 0, "daily": 0}}
+opts = {o["window"]: o for o in setup.options(games, measure=False, s=survey)["options"]}
+check("known window analysed", opts["3m"]["positions"], 0)
+check("older window still has work", opts["1y"]["positions"] > 0 and opts["1y"]["estimated"], True)
+check("all from chess.com's totals", (opts["all"]["games"], opts["all"]["estimated"]), (500, False))
 
 # --- the progress bar: a line per quarter off a terminal, silent with --json ---
 out = io.StringIO()

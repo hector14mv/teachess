@@ -93,10 +93,9 @@ def survey(user: str) -> dict:
 def covered(s: dict) -> str:
     """The oldest month from which every month of the archive is downloaded ("9999-99": none, "0000-00": all)."""
     cached = {f.stem for f in core.fetch_games.RAW.glob("*.json")} if core.fetch_games.RAW.exists() else set()
-    current = date.today().strftime("%Y-%m")
     oldest = "9999-99"
     for m in sorted(s["months"], reverse=True):
-        if m not in cached and m != current:
+        if m not in cached:
             return oldest
         oldest = m
     return "0000-00"  # the whole archive
@@ -144,12 +143,14 @@ def options(games: list[dict], time_class: str | None = None, measure: bool = Tr
     evals = core.load_evals()
     first = min(s["months"]) if s and s["months"] else core.end_dt(mine[0]).strftime("%Y-%m")
     cover = covered(s) if s and s["totals"] else "0000-00"
-    opts, last_n = [], None
+    opts, last_n, per_game = [], None, 60.0  # distinct positions a game brings, measured below
     for w in OFFERED:
         since = month(w)
         if since >= cover:
             gs = [g for g in mine if g["end"] >= core.window_since(w)]
-            n, todo, guess = len(gs), sorted(core.positions(gs) - evals.keys()), False
+            pos = core.positions(gs)
+            n, todo, guess = len(gs), sorted(pos - evals.keys()), False
+            per_game = len(pos) / max(1, n)
         elif since <= first:  # the whole archive: chess.com's own total
             n, todo, guess = s["totals"][tc], None, False
         else:
@@ -166,12 +167,13 @@ def options(games: list[dict], time_class: str | None = None, measure: bool = Tr
     workers = max(1, ((os.cpu_count() or 2) - 1) / 2)
     known = [o for o in opts if o["todo"] is not None]
     pace = per_position(known[-1]["todo"]) if measure and known else None
-    # A window not downloaded yet: its games times the new positions a game brings in the largest known one
-    ratio = len(known[-1]["todo"]) / max(1, known[-1]["games"]) if known else 60
+    # A window not downloaded yet: none of its games is evaluated; each brings the positions a game brings in
+    # the largest known window (counted whole, evaluated or not)
     for o in opts:
         todo = o.pop("todo")
         if o["positions"] is None:
-            o["positions"] = round(o["games"] * ratio)
+            o["positions"] = known[-1]["positions"] + round((o["games"] - known[-1]["games"]) * per_game) \
+                if known else round(o["games"] * per_game)
         parallel = workers if o["positions"] > core.BULK else 1
         o["minutes"] = None if pace is None else max(1, round(o["positions"] * pace / parallel / 60))
     rec = next((o["window"] for o in opts if o["games"] >= MIN_GAMES), opts[-1]["window"])
@@ -260,9 +262,10 @@ def tidy(log=print) -> list[dict]:
 
 
 def prepare(user: str, time_class: str | None = None, log=print, show: bool = False) -> tuple[list[dict], dict]:
-    """Download what the options need, newest first: the last three months, then a year, then three, stopping
-    as soon as a window holds enough games of the player's time control to be recommended. Older windows are
-    estimated (see `estimate`). Returns the games and the survey."""
+    """Download what the options need, newest first: the last three months, then a year, then three, then all,
+    stopping as soon as a window holds enough games of the player's time control to be recommended. Older
+    windows are estimated (see `estimate`). The first step always syncs, so the current month is fresh.
+    Returns the games and the survey."""
     s = survey(user)
     if not s["totals"]:  # no shortcut: the whole archive, as versions before 0.1.0 did
         log("Descargando tus partidas de chess.com…")
@@ -270,8 +273,8 @@ def prepare(user: str, time_class: str | None = None, log=print, show: bool = Fa
         return tidy(log), s
     if not show:
         log("Descargando tus últimas partidas…")
-    for w in ("3m", "1y", "3y"):
-        if covered(s) > month(w):
+    for i, w in enumerate(("3m", "1y", "3y", "all")):
+        if i == 0 or covered(s) > month(w):
             core.sync(user, log=log, analyse=False, since_month=month(w), show=show)
         games = tidy(log)
         since = core.window_since(w)

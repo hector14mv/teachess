@@ -26,14 +26,16 @@ _local = threading.local()  # one kept-alive connection per thread: a new TLS ha
 
 
 def request(method: str, url: str) -> tuple[http.client.HTTPResponse, bytes]:
-    """One serial request over a kept-alive connection to chess.com. Retries a dropped connection and a 429
-    (rate limit) with backoff; other HTTP errors raise urllib.error.HTTPError, a dead network URLError."""
-    parts = urllib.parse.urlsplit(url)
-    target = parts.path + (f"?{parts.query}" if parts.query else "")
+    """One serial request over a kept-alive connection to chess.com. Follows redirects, retries a dropped
+    connection and a 429 (rate limit) with backoff; other HTTP errors raise urllib.error.HTTPError, a dead
+    network URLError."""
     headers = {"User-Agent": UA}
     if method == "GET":
         headers["Accept-Encoding"] = "gzip"  # chess.com asks for it; a month shrinks about 8x
+    hops = 0
     for attempt in range(5):
+        parts = urllib.parse.urlsplit(url)
+        target = parts.path + (f"?{parts.query}" if parts.query else "")
         conn = getattr(_local, "conn", None)
         if conn is None or conn.host != parts.hostname:
             conn = _local.conn = http.client.HTTPSConnection(parts.hostname, timeout=30)
@@ -46,6 +48,9 @@ def request(method: str, url: str) -> tuple[http.client.HTTPResponse, bytes]:
             _local.conn = None
             if attempt == 4:
                 raise urllib.error.URLError(e) from None
+            continue
+        if r.status in (301, 302, 303, 307, 308) and r.getheader("Location") and hops < 5:
+            url, hops = urllib.parse.urljoin(url, r.getheader("Location")), hops + 1  # chess.com moves some URLs
             continue
         if r.status == 429:
             time.sleep(2 ** attempt)

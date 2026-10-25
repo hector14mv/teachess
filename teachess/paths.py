@@ -8,6 +8,8 @@ Versions before 0.1.0 kept them inside the checkout (data/ and config.json); `mi
 
 from __future__ import annotations
 
+import contextlib
+import errno
 import fcntl
 import os
 import shutil
@@ -34,12 +36,38 @@ LEGACY_ITEMS = ("raw", "games.jsonl", "evals.json", "report.json", "deep.json", 
                 "watch_state.json", "watch.log")
 
 
+def _move(src: Path, dst: Path) -> None:
+    """Move a file or folder so that `dst` appears only once it is complete: a rename on the same disk, else a
+    copy to `dst.partial` renamed into place before the source goes."""
+    try:
+        os.rename(src, dst)
+        return
+    except OSError as e:
+        if e.errno != errno.EXDEV:
+            raise
+    part = dst.with_name(dst.name + ".partial")
+    if part.is_dir():
+        shutil.rmtree(part)
+    elif part.exists():
+        part.unlink()
+    if src.is_dir():
+        shutil.copytree(src, part)
+    else:
+        shutil.copy2(src, part)
+    os.rename(part, dst)
+    if src.is_dir():
+        shutil.rmtree(src)
+    else:
+        src.unlink()
+
+
 def migrate(log=print) -> bool:
     """Move a checkout's data/ and config.json into HOME, once. True when something moved.
 
-    Never with TEACHESS_HOME set (an explicit home, as in tests) and never over what HOME already holds. The
-    data moves under a lock into one staging folder (resumed if a move was cut short) and lands in one rename,
-    so the watcher never sees half a folder."""
+    Never with TEACHESS_HOME set (an explicit home, as in tests) and never over what HOME already holds. A
+    watcher or rebuild of the old version still running holds the old folder's locks: the move waits for them.
+    Each item lands whole (see `_move`) in one staging folder, resumed if a move was cut short, and the folder
+    becomes DATA in one rename, so the watcher never sees half of it."""
     if os.environ.get("TEACHESS_HOME"):
         return False
     old_data, old_config, staging = LEGACY / "data", LEGACY / "config.json", HOME / "data.migrating"
@@ -48,21 +76,26 @@ def migrate(log=print) -> bool:
     if not data_due and not config_due:
         return False
     HOME.mkdir(parents=True, exist_ok=True)
-    with open(HOME / ".migrate.lock", "w") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+    with contextlib.ExitStack() as held:
+        for path in (HOME / ".migrate.lock", old_data / "watch.lock", old_data / "data.lock"):
+            if path.parent.exists():
+                lock = held.enter_context(open(path, "a"))
+                fcntl.flock(lock, fcntl.LOCK_EX)
         moved = False
         if not DATA.exists() and ((old_data / "games.jsonl").exists() or staging.exists()):
             staging.mkdir(exist_ok=True)
             for name in LEGACY_ITEMS:
                 if (old_data / name).exists() and not (staging / name).exists():
-                    shutil.move(str(old_data / name), str(staging / name))
-            staging.replace(DATA)
+                    _move(old_data / name, staging / name)
+            os.rename(staging, DATA)
             moved = True
         if not CONFIG.exists() and old_config.exists():
-            shutil.move(str(old_config), str(CONFIG))
+            _move(old_config, CONFIG)
             moved = True
     if moved:
         log(f"Tus partidas y tu configuración están ahora en {HOME}.")
+        if sys.platform == "darwin" and (Path.home() / "Library" / "LaunchAgents" / "dev.teachess.watch.plist").exists():
+            log("Ejecuta «teachess watch install» para que el aviso de fondo escriba su registro allí.")
     return moved
 
 

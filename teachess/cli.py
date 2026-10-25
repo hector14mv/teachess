@@ -16,7 +16,7 @@ from datetime import date, datetime, timedelta
 import chess
 
 from . import core, drills, paths, progress
-from .errors import NotFound, TeachessError, UsageError
+from .errors import NotFound, SetupError, TeachessError, UsageError
 
 USE_COLOR = sys.stdout.isatty()
 
@@ -250,8 +250,16 @@ def cmd_setup(args) -> None:
         with contextlib.redirect_stdout(sys.stderr):
             r = setup.run(args.window, args.time_class, log=lambda *_: None, user=args.user)
         return emit(r)
-    show_setup(setup.run(args.window, args.time_class, interactive=sys.stdin.isatty() and not args.yes,
-                         user=args.user), args)
+    interactive = sys.stdin.isatty() and not args.yes
+    show_setup(setup.run(args.window, args.time_class, interactive=interactive, user=args.user), args)
+    if interactive and sys.stdout.isatty():
+        # The first look is the dashboard; the terminal commands are there for later
+        print(dim("Abro tu panel en el navegador. Ciérralo con Ctrl+C y vuelve cuando quieras con teachess dash."))
+        from . import server
+        try:
+            server.serve()
+        except SetupError as e:
+            print(orange(str(e)))
 
 
 def cmd_dash(args) -> None:

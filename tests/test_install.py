@@ -129,6 +129,8 @@ check("quarters", out.getvalue().splitlines(), ["Analizando: 25 %", "Analizando:
 for cols in (120, 72, 50, 30, 12):
     line = progress.render("Comprobando a fondo las jugadas buenas", 21, 100, ["quedan ~1 min", "21/100 jugadas"], cols)
     check(f"fits in {cols} columns", len(line) <= cols - 1, True)
+check("wide characters counted as two", progress.cells(progress.render("棋" * 10, 5, 10, ["quedan ~1 min"], 30)) <= 29, True)
+check("zero columns still one cell", progress.cells(progress.render("Analizando", 5, 10, [], 0)) <= 1, True)
 check("wide keeps everything", progress.render("Analizando", 5, 10, ["quedan ~1 min"], 120),
       "Analizando  " + "█" * 12 + "░" * 12 + "   50 %  · quedan ~1 min")
 check("narrow drops the count first",

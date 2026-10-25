@@ -10,6 +10,7 @@ from __future__ import annotations
 import os
 import sys
 import time
+import unicodedata
 
 QUIET = False  # set by --json: agents read the result, not the bar
 WIDTH = 24
@@ -22,30 +23,45 @@ def remaining(seconds: float) -> str:
     return f"quedan ~{round(seconds / 60)} min"
 
 
+def cells(text: str) -> int:
+    """Columns `text` takes on a terminal: wide characters (CJK, most emoji) take two."""
+    return sum(2 if unicodedata.east_asian_width(c) in "WF" else 1 for c in text)
+
+
+def clip(text: str, room: int) -> str:
+    out = ""
+    for c in text:
+        if cells(out + c) > room:
+            break
+        out += c
+    return out
+
+
 def render(label: str, done: int, total: int, notes: list[str], columns: int) -> str:
     """One line of the bar that fits in `columns` (the last column stays free: some terminals wrap on it).
     The bar shrinks first, then the notes go (the last one first), then the label is shortened."""
-    room = columns - 1
+    room = max(1, columns - 1)
     pct = f"{int(100 * done / total):3d} %"
     notes = list(notes)
     while True:
         tail = "".join(f"  · {n}" for n in notes)
-        width = room - len(label) - len(pct) - len(tail) - 4
+        width = room - cells(label) - len(pct) - cells(tail) - 4
         if width >= MIN_WIDTH or not notes:
             break
         notes.pop()
     if width < MIN_WIDTH:  # too narrow even bare: shorten the label, keep the bar and the percentage
-        label = label[:max(0, len(label) - (MIN_WIDTH - width) - 1)] + "…"
+        label = clip(label, max(0, cells(label) - (MIN_WIDTH - width) - 1)) + "…"
     width = max(MIN_WIDTH, min(WIDTH, width))
     filled = round(width * done / total)
-    return f"{label}  {'█' * filled}{'░' * (width - filled)}  {pct}{tail}"[:room]
+    return clip(f"{label}  {'█' * filled}{'░' * (width - filled)}  {pct}{tail}", room)
 
 
 def columns(stream) -> int:
     try:
-        return os.get_terminal_size(stream.fileno()).columns
+        cols = os.get_terminal_size(stream.fileno()).columns
     except (OSError, ValueError, AttributeError):
-        return 80
+        cols = 0
+    return cols or 80  # a terminal that has not told its size yet reports 0
 
 
 class Bar:

@@ -30,12 +30,20 @@ class Store:
         self._reviews: dict[str, tuple] = {}  # game url -> (deep cache version, review)
         self.reload()
 
+    @staticmethod
+    def stamp() -> str:
+        return str(core.REPORT.stat().st_mtime_ns) if core.REPORT.exists() else "0"
+
     def reload(self) -> None:
         with self.lock:
-            self.games = core.load_games()
-            self.report = core.load_report()
-            self.evals = core.load_evals()
-            self.version = str(core.REPORT.stat().st_mtime) if core.REPORT.exists() else "0"
+            for _ in range(3):  # another process may rebuild the report while we read: read again until it holds still
+                before = self.stamp()
+                self.games = core.load_games()
+                self.report = core.load_report()
+                self.evals = core.load_evals()
+                self.version = self.stamp()
+                if self.version == before:
+                    break
             self._reviews.clear()
             self._insights = None
 
@@ -51,7 +59,7 @@ class Store:
 
     def fresh(self) -> None:
         """Reload when the report was rebuilt elsewhere: the watcher, or a setup that picked another window."""
-        if (str(core.REPORT.stat().st_mtime) if core.REPORT.exists() else "0") != self.version:
+        if self.stamp() != self.version:
             self.reload()
 
     def state(self) -> dict:

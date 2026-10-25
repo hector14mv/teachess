@@ -163,7 +163,7 @@ async function load() {
     if (st.version !== S.version) {
       S.insights = await j('/api/insights');
       S.version = st.version;
-      if (S.tab === 'errores' && !S.answer) S.drill = await j('/api/drill');
+      if (!S.answer) S.drill = S.tab === 'errores' ? await j('/api/drill') : null;  // a card from the old report is gone
     }
     const snapshot = JSON.stringify([st.today, st.games, st.rating, S.version]);
     if (snapshot !== S.lastJson) { S.lastJson = snapshot; render(); }

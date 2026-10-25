@@ -13,33 +13,47 @@ Made in the spirit of [wallapop-cli](https://github.com/Microck/wallapop-cli): a
 
 ## Install
 
-You need Python 3.9 or newer and [Stockfish](https://stockfishchess.org/) (`brew install stockfish` on macOS,
-`apt install stockfish` on Debian/Ubuntu).
-
 ```bash
-git clone https://github.com/hector14mv/teachess.git && cd teachess
-python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
-bin/teachess setup
+brew install hector14mv/tap/teachess
+```
+```bash
+teachess
 ```
 
-`setup` asks for your chess.com username, downloads your archive and asks how much of it to analyse. The options
-are built from your own games: the time control you play most, how many games each window holds, and how long
-Stockfish takes on your machine (measured on a sample). It recommends the shortest window with about 300 games,
-because recent games say how you play now; with a small archive it analyses everything without asking. A first
-install takes about five minutes for 500 games.
+Homebrew brings Python and [Stockfish](https://stockfishchess.org/) with it. The first `teachess` asks for your
+chess.com username and how much of your history to analyse. The options appear within seconds and are built from
+your own games: the time control you play most, how many games each window holds, and how long Stockfish takes on
+your machine (measured on a sample). It recommends the shortest window with about 300 games, because recent games
+say how you play now; with a small archive it analyses everything without asking. Only the window you pick is
+downloaded; `~` marks a count estimated from the size of months not downloaded yet. A first install takes about
+five minutes for 500 games.
 
 ```
 ¿Cuánto historial quieres que analice? Stockfish mira cada jugada.
 
-  1. Últimos 3 meses           481 partidas         ~4 min  ← recomendado
-  2. Último año              1.414 partidas        ~10 min
-  3. Últimos 3 años          2.165 partidas        ~14 min
-  4. Todo (desde 2021)       5.279 partidas        ~32 min
+  1. Últimos 3 meses           489 partidas         ~4 min  ← recomendado
+  2. Último año             ~1.391 partidas        ~10 min
+  3. Últimos 3 años         ~2.283 partidas        ~17 min
+  4. Todo (desde 2021)       5.287 partidas        ~38 min
 ```
 
-To use `teachess` from anywhere (and from Claude), put it on your `PATH`:
-`ln -s "$PWD/bin/teachess" ~/.local/bin/teachess`. Agents pass everything as flags:
-`teachess setup --user NAME --window 1y --json`, or `teachess setup --json` for the options.
+Agents pass everything as flags: `teachess setup --user NAME --window 1y --json`, or `teachess setup --json`
+for the options.
+
+Without Homebrew (Linux, or to work on the code) you need Python 3.9 or newer and Stockfish
+(`apt install stockfish`):
+
+```bash
+git clone https://github.com/hector14mv/teachess.git && cd teachess
+```
+```bash
+python3 -m venv .venv && .venv/bin/pip install -e .
+```
+```bash
+.venv/bin/teachess setup
+```
+
+Then put it on your `PATH` so Claude can call it: `ln -s "$PWD/.venv/bin/teachess" ~/.local/bin/teachess`.
 
 > The interface and the coaching text are in Spanish. The background notifier is a macOS service; on Linux, run
 > `teachess watch --once` from cron or a systemd timer every two minutes.
@@ -145,6 +159,11 @@ The coach folder and the MCP server work together: the folder's settings allow b
 
 ## Settings
 
+Your games, evaluations, drill progress and `config.json` live in `~/Library/Application Support/teachess` on macOS
+and `~/.local/share/teachess` elsewhere; set `TEACHESS_HOME` to keep them somewhere else, or to follow a second
+player in a folder of their own. A git checkout from before 0.1.0 kept them in its own `data/` and `config.json`:
+the first run moves them.
+
 `setup` writes your username to `config.json`; you can also set `TEACHESS_USER=<username>`. `config.json` can also hold your own
 coaching notes for the Repertoire tab, keyed by colour and line (see `config.example.json`). A note's `move` is
 your plan for that position, and the drills follow it: a mistake you make with the planned move is not drilled,
@@ -153,10 +172,10 @@ and where Stockfish prefers another move, the card asks for the plan's move inst
 ## How it works
 
 ```
-chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
-                        parse_games.py ─▶ data/games.jsonl      (one row per game, your side)
-                        engine_eval.py ─▶ data/evals.json       (Stockfish, depth 12, every move)
-                        build_report.py ─▶ data/report.json     (tree, drills, habits)
+chess.com public API ─▶ fetch_games  ─▶ data/raw/YYYY-MM.json
+                        parse_games  ─▶ data/games.jsonl      (one row per game, your side)
+                        engine_eval  ─▶ data/evals.json       (Stockfish, depth 12, every move)
+                        build_report ─▶ data/report.json      (tree, drills, habits)
                                              │
                      teachess (CLI) ◀────────┴────────▶ teachess dash (127.0.0.1 + watcher)
                             │
@@ -164,8 +183,10 @@ chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
 ```
 
 - It reads only chess.com's [public data API](https://www.chess.com/news/view/published-data-api). There is
-  no login and nothing is written to chess.com. Requests are serial because chess.com rate-limits parallel calls.
-- Everything stays on your machine, in `data/`. The dashboard listens on `127.0.0.1` only.
+  no login and nothing is written to chess.com. Requests are serial because chess.com rate-limits parallel calls,
+  and they name teachess and this repository, as chess.com asks of API clients.
+- Everything stays on your machine, in the `data/` folder of your teachess home (see Settings). The dashboard
+  listens on `127.0.0.1` only.
 - The analysis covers the window and time control chosen at setup. An opening "mistake" is a move in the
   first 12 that loses 80 centipawns or more; a drill is a position where you played the same bad move at least
   three times. A "blunder", anywhere in the game, is a move that throws away 0.3 of your winning chances (the
@@ -178,8 +199,9 @@ chess.com public API ─▶ fetch_games.py ─▶ data/raw/YYYY-MM.json
 `.venv/bin/python tests/test_watch.py` runs the watcher's scenarios (daylight saving time, several games between
 checks, one stop per streak, failed notifications, a corrupt state file, two watchers at once) on synthetic games;
 `tests/test_drills.py` covers the plan-aware deck (illegal plan moves, plan changes, cramped positions),
-`tests/test_analysis.py` blunder detection, the depth-18 check and the setup options, and `tests/test_setup.py`
-the username step.
+`tests/test_analysis.py` blunder detection, the depth-18 check and the setup options, `tests/test_setup.py`
+the username step, and `tests/test_install.py` the move of an old checkout's data, the quick setup options and the
+progress bar.
 
 ## Limits
 

@@ -176,6 +176,8 @@ check("an entry for another command is not connected", mcp.status()["claude_code
 (fake_home / ".claude.json").write_text(json.dumps({"mcpServers": {"teachess": {"command": str(mcp.BIN), "args": ["mcp"],
                                                                                  "env": paths.env()}}}))
 check("this command is connected", mcp.status()["claude_code"]["connected"], True)
+(fake_home / ".claude.json").write_text(json.dumps({"mcpServers": {"teachess": "old-command"}}))
+check("a malformed entry is not connected", mcp.status()["claude_code"]["connected"], False)
 pathlib.Path.home = real_home
 
 progress.QUIET = True

@@ -49,8 +49,14 @@ class Store:
                 kept = self._reviews[g["url"]] = (version, core.review(g, self.evals, self.report, deep="cached"))
             return kept[1]
 
+    def fresh(self) -> None:
+        """Reload when the report was rebuilt elsewhere: the watcher, or a setup that picked another window."""
+        if (str(core.REPORT.stat().st_mtime) if core.REPORT.exists() else "0") != self.version:
+            self.reload()
+
     def state(self) -> dict:
         with self.lock:
+            self.fresh()
             games = [g for g in self.games if self.at is None or core.end_dt(g) <= self.at]
             rapid = [g for g in games if g["time_class"] == core.tc()]
             t = core.today(games, self.report, at=self.at)
@@ -191,7 +197,7 @@ def make_handler(store: Store):
 
         def body(self):
             length = int(self.headers.get("Content-Length") or 0)
-            if not 0 < length <= 4096 or (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+            if not 0 < length <= 4096 or (self.headers.get("Content-Type") or "").split(";")[0].strip().lower() != "application/json":
                 raise ValueError
             return json.loads(self.rfile.read(length))
 

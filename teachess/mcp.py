@@ -174,9 +174,10 @@ def status() -> dict:
     (an old checkout, a moved install) does not count as connected: installing again fixes it."""
     def entry(path: Path):
         try:
-            return json.loads(path.read_text()).get("mcpServers", {}).get("teachess")
+            found = json.loads(path.read_text()).get("mcpServers", {}).get("teachess")
         except (OSError, ValueError, AttributeError):
             return None
+        return found if isinstance(found, dict) else None
 
     code, desk = entry(Path.home() / ".claude.json"), entry(desktop_config())
     env = paths.env()

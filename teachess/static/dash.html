@@ -565,10 +565,12 @@ function viewAI() {
 }
 
 async function copy(text) {
-  try { await navigator.clipboard.writeText(text); } catch (e) {
+  let done = false;
+  try { await navigator.clipboard.writeText(text); done = true; } catch (e) {
     const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select();
-    try { document.execCommand('copy'); } finally { t.remove(); }
+    try { done = document.execCommand('copy'); } catch (e2) { done = false; } finally { t.remove(); }
   }
+  if (!done) return window.prompt('No he podido copiarla. Selecciónala y cópiala:', text);
   S.copied = text; render();
   setTimeout(() => { if (S.copied === text) { S.copied = null; render(); } }, 2000);
 }

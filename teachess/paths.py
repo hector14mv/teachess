@@ -96,6 +96,9 @@ def migrate(log=print) -> bool:
         log(f"Tus partidas y tu configuración están ahora en {HOME}.")
         if sys.platform == "darwin" and (Path.home() / "Library" / "LaunchAgents" / "dev.teachess.watch.plist").exists():
             log("Ejecuta «teachess watch install» para que el aviso de fondo escriba su registro allí.")
+        # A process of the old version that keeps running (a `teachess watch` or `teachess dash` left open) still
+        # writes to the old folder, and nothing here can stop it: it has to be restarted
+        log("Si tenías abierto «teachess watch» o «teachess dash», ciérralos y vuelve a abrirlos.")
     return moved
 
 

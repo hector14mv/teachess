@@ -143,14 +143,14 @@ def options(games: list[dict], time_class: str | None = None, measure: bool = Tr
     evals = core.load_evals()
     first = min(s["months"]) if s and s["months"] else core.end_dt(mine[0]).strftime("%Y-%m")
     cover = covered(s) if s and s["totals"] else "0000-00"
-    opts, last_n, per_game = [], None, 60.0  # distinct positions a game brings, measured below
+    opts, last_n, per_game, sample = [], None, 60.0, []  # positions a game brings; what to time Stockfish on
     for w in OFFERED:
         since = month(w)
         if since >= cover:
             gs = [g for g in mine if g["end"] >= core.window_since(w)]
             pos = core.positions(gs)
             n, todo, guess = len(gs), sorted(pos - evals.keys()), False
-            per_game = len(pos) / max(1, n)
+            per_game, sample = len(pos) / max(1, n), todo or sorted(pos)
         elif since <= first:  # the whole archive: chess.com's own total
             n, todo, guess = s["totals"][tc], None, False
         else:
@@ -166,14 +166,15 @@ def options(games: list[dict], time_class: str | None = None, measure: bool = Tr
     # a clean install measured 4 minutes where a linear estimate said 2
     workers = max(1, ((os.cpu_count() or 2) - 1) / 2)
     known = [o for o in opts if o["todo"] is not None]
-    pace = per_position(known[-1]["todo"]) if measure and known else None
+    pace = per_position(sample) if measure and sample else None  # evaluated already: timed again, same answer
     # A window not downloaded yet: none of its games is evaluated; each brings the positions a game brings in
     # the largest known window (counted whole, evaluated or not)
     for o in opts:
         todo = o.pop("todo")
         if o["positions"] is None:
-            o["positions"] = known[-1]["positions"] + round((o["games"] - known[-1]["games"]) * per_game) \
-                if known else round(o["games"] * per_game)
+            extra = o["games"] - (known[-1]["games"] if known else 0)
+            # a game not downloaded is not evaluated: at least one new position each, never "ya analizado"
+            o["positions"] = (known[-1]["positions"] if known else 0) + max(extra, round(extra * per_game))
         parallel = workers if o["positions"] > core.BULK else 1
         o["minutes"] = None if pace is None else max(1, round(o["positions"] * pace / parallel / 60))
     rec = next((o["window"] for o in opts if o["games"] >= MIN_GAMES), opts[-1]["window"])
@@ -261,11 +262,12 @@ def tidy(log=print) -> list[dict]:
     return core.load_games()
 
 
-def prepare(user: str, time_class: str | None = None, log=print, show: bool = False) -> tuple[list[dict], dict]:
+def prepare(user: str, time_class: str | None = None, log=print, show: bool = False,
+            window: str | None = None) -> tuple[list[dict], dict]:
     """Download what the options need, newest first: the last three months, then a year, then three, then all,
     stopping as soon as a window holds enough games of the player's time control to be recommended. Older
     windows are estimated (see `estimate`). The first step always syncs, so the current month is fresh.
-    Returns the games and the survey."""
+    A window already chosen (--window) downloads just that window. Returns the games and the survey."""
     s = survey(user)
     if not s["totals"]:  # no shortcut: the whole archive, as versions before 0.1.0 did
         log("Descargando tus partidas de chess.com…")
@@ -273,6 +275,9 @@ def prepare(user: str, time_class: str | None = None, log=print, show: bool = Fa
         return tidy(log), s
     if not show:
         log("Descargando tus últimas partidas…")
+    if window:
+        core.sync(user, log=log, analyse=False, since_month=month(window), show=show)
+        return tidy(log), s
     for i, w in enumerate(("3m", "1y", "3y", "all")):
         if i == 0 or covered(s) > month(w):
             core.sync(user, log=log, analyse=False, since_month=month(w), show=show)
@@ -294,7 +299,7 @@ def run(window: str | None = None, time_class: str | None = None, interactive: b
     if not shutil.which("stockfish"):
         raise SetupError("Stockfish no está instalado (brew install stockfish o apt install stockfish).")
     user = ensure_user(user, interactive)
-    games, s = prepare(user, time_class, log, show=interactive)
+    games, s = prepare(user, time_class, log, show=interactive, window=window)
     if not games:
         raise SetupError("No hay partidas en tu archivo de chess.com.")
     if window is None:

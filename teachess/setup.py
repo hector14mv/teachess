@@ -269,15 +269,15 @@ def prepare(user: str, time_class: str | None = None, log=print, show: bool = Fa
     windows are estimated (see `estimate`). The first step always syncs, so the current month is fresh.
     A window already chosen (--window) downloads just that window. Returns the games and the survey."""
     s = survey(user)
+    if window:
+        core.sync(user, log=log, analyse=False, since_month=month(window), show=show)
+        return tidy(log), s
     if not s["totals"]:  # no shortcut: the whole archive, as versions before 0.1.0 did
         log("Descargando tus partidas de chess.com…")
         core.sync(user, log=log, analyse=False, show=show)
         return tidy(log), s
     if not show:
         log("Descargando tus últimas partidas…")
-    if window:
-        core.sync(user, log=log, analyse=False, since_month=month(window), show=show)
-        return tidy(log), s
     for i, w in enumerate(("3m", "1y", "3y", "all")):
         if i == 0 or covered(s) > month(w):
             core.sync(user, log=log, analyse=False, since_month=month(w), show=show)

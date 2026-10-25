@@ -147,7 +147,7 @@ def install() -> dict:
         "StandardOutPath": str(LOG),
         "StandardErrorPath": str(LOG),
         # launchd starts jobs with a bare PATH; Stockfish usually lives in Homebrew's
-        "EnvironmentVariables": {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin"},
+        "EnvironmentVariables": {"PATH": "/opt/homebrew/bin:/usr/local/bin:/usr/bin:/bin", **paths.env()},
     }
     text = plistlib.dumps(plist)
     status = "unchanged" if path.exists() and path.read_bytes() == text else ("updated" if path.exists() else "created")

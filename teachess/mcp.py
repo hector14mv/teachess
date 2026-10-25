@@ -183,7 +183,9 @@ def install_claude_code() -> dict:
         current = json.loads(config.read_text()).get("mcpServers", {}).get("teachess")
     except (OSError, ValueError):
         current = None
-    if current and current.get("command") == str(BIN) and current.get("args") == ["mcp"]:
+    env = paths.env()  # a second player's home travels with the server
+    if current and current.get("command") == str(BIN) and current.get("args") == ["mcp"] \
+            and (current.get("env") or {}) == env:
         return {"status": "unchanged", "config": str(config)}
 
     def run(*argv: str) -> subprocess.CompletedProcess:
@@ -191,7 +193,8 @@ def install_claude_code() -> dict:
 
     if current:
         run("remove", "teachess", "--scope", "user")
-    done = run("add", "--scope", "user", "teachess", "--", str(BIN), "mcp")
+    flags = [f for k, v in env.items() for f in ("-e", f"{k}={v}")]
+    done = run("add", "--scope", "user", "teachess", *flags, "--", str(BIN), "mcp")
     if done.returncode:
         raise SetupError(f"claude mcp add falló: {(done.stderr or done.stdout).strip()}")
     return {"status": "updated" if current else "created", "config": str(config),
@@ -212,7 +215,7 @@ def install_claude_desktop() -> dict:
         cfg = json.loads(path.read_text()) if path.exists() else {}
     except ValueError:
         raise SetupError(f"{path} no es JSON válido; no lo toco.") from None
-    entry = {"command": str(BIN), "args": ["mcp"]}
+    entry = {"command": str(BIN), "args": ["mcp"], **({"env": paths.env()} if paths.env() else {})}
     servers = cfg.setdefault("mcpServers", {})
     if servers.get("teachess") == entry:
         return {"status": "unchanged", "config": str(path)}

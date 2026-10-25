@@ -110,3 +110,9 @@ def command() -> str:
     if checkout.exists():
         return str(checkout)
     return shutil.which("teachess") or str(Path(sys.argv[0]).resolve())
+
+
+def env() -> dict:
+    """The environment a background job needs to find this home: TEACHESS_HOME when it was set by hand (a second
+    player's folder), nothing for the default one."""
+    return {"TEACHESS_HOME": str(HOME)} if os.environ.get("TEACHESS_HOME") else {}

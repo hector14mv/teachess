@@ -1,4 +1,5 @@
-"""Installing and setting up: the move of an old checkout's data, the quick setup options and the progress bar.
+"""Installing and setting up: the move of an old checkout's data, the quick setup options, the progress bar and
+the dashboard's AI tab (who may call the server, where teachess is plugged into Claude).
 No network, no real games.
 
 Run: .venv/bin/python tests/test_install.py
@@ -136,6 +137,46 @@ check("wide keeps everything", progress.render("Analizando", 5, 10, ["quedan ~1 
 check("narrow drops the count first",
       "quedan" in progress.render("Analizando tus partidas", 5, 10, ["quedan ~1 min", "5/10 meses"], 60)
       and "meses" not in progress.render("Analizando tus partidas", 5, 10, ["quedan ~1 min", "5/10 meses"], 60), True)
+
+# --- the dashboard answers only its own pages, and says where teachess is plugged into Claude ---
+import http.client  # noqa: E402
+import threading  # noqa: E402
+from teachess import mcp, server  # noqa: E402
+
+httpd = server.ThreadingHTTPServer(("127.0.0.1", 0), server.make_handler(store=None))
+threading.Thread(target=httpd.serve_forever, daemon=True).start()
+port = httpd.server_address[1]
+
+
+def call(method, path, headers, body=None):
+    c = http.client.HTTPConnection("127.0.0.1", port)
+    c.request(method, path, body=body, headers=headers)
+    return c.getresponse().status
+
+
+fake_home = pathlib.Path(tempfile.mkdtemp())
+real_home = pathlib.Path.home
+pathlib.Path.home = staticmethod(lambda: fake_home)
+mcp.desktop_config = lambda: fake_home / "desktop.json"
+ok_host = {"Host": f"localhost:{port}"}
+check("own page answers", call("GET", "/api/ai", ok_host), 200)
+check("other host refused", call("GET", "/api/ai", {"Host": "evil.example"}), 403)
+check("other origin refused", call("POST", "/api/ai/connect", {**ok_host, "Origin": "https://evil.example",
+                                                                 "Content-Type": "application/json"}, '{"target": "claude-code"}'), 403)
+check("form post refused", call("POST", "/api/ai/connect", {**ok_host, "Content-Type": "text/plain"},
+                                '{"target": "claude-code"}'), 400)
+check("unknown target refused", call("POST", "/api/ai/connect", {**ok_host, "Content-Type": "application/json"},
+                                     '{"target": "x"}'), 400)
+httpd.shutdown()
+
+check("nothing connected", (mcp.status()["claude_code"]["connected"], mcp.status()["claude_desktop"]["connected"]),
+      (False, False))
+(fake_home / ".claude.json").write_text(json.dumps({"mcpServers": {"teachess": {"command": "/old/teachess", "args": ["mcp"]}}}))
+check("an entry for another command is not connected", mcp.status()["claude_code"]["connected"], False)
+(fake_home / ".claude.json").write_text(json.dumps({"mcpServers": {"teachess": {"command": str(mcp.BIN), "args": ["mcp"],
+                                                                                 "env": paths.env()}}}))
+check("this command is connected", mcp.status()["claude_code"]["connected"], True)
+pathlib.Path.home = real_home
 
 progress.QUIET = True
 out = io.StringIO()

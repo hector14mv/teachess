@@ -104,6 +104,18 @@ h2 { font-size: 17px; }
 .heat .h { font-family: var(--mono); font-size: 11px; color: var(--muted); text-align: center; }
 .heat .c { height: 40px; border-radius: 6px; display: flex; align-items: center; justify-content: center; font-family: var(--mono); font-size: 12px; }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
+.asks { margin-top: 6px; display: flex; flex-direction: column; }
+.ask-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px; align-items: center; min-height: 56px; padding: 10px 4px; border: 0; border-top: 1px solid var(--line); background: transparent; text-align: left; font-size: 15px; color: var(--text); border-radius: 0; }
+.ask-row:hover { background: #18211D; }
+.ask-row .go { font-family: var(--mono); font-size: 12px; color: var(--muted); white-space: nowrap; }
+.ask-row:hover .go { color: var(--blue); }
+.ask-row.done .go { color: var(--live); }
+.status { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #B8C4BD; }
+.cmd { margin-top: 12px; display: flex; align-items: center; gap: 10px; padding: 10px 12px; border-radius: 10px; background: var(--ground); font-family: var(--mono); font-size: 14px; }
+.cmd span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.cmd button { min-height: 32px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line-2); background: transparent; font-size: 12px; }
+.tools { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px; }
+.tools span { padding: 4px 10px; border-radius: 999px; background: #1C2A3A; color: #CFE2FF; font-family: var(--mono); font-size: 12px; }
 </style>
 </head>
 <body>
@@ -122,13 +134,13 @@ h2 { font-size: 17px; }
   <div id="view"><p class="empty">Cargando tus partidas…</p></div>
 </main>
 <script>
-const TABS = [['ahora', 'Ahora'], ['repertorio', 'Repertorio'], ['errores', 'Tus errores'], ['ritmo', 'Ritmo']];
+const TABS = [['ahora', 'Ahora'], ['repertorio', 'Repertorio'], ['errores', 'Tus errores'], ['ritmo', 'Ritmo'], ['ia', 'Tu entrenador IA']];
 const DEFAULT_PATH = { white: ['e4', 'e5', 'Nf3', 'Nc6'], black: ['e4', 'e5', 'Nf3', 'Nc6', 'Bc4'] };
 const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 
 const S = {
   tab: TABS.some(t => t[0] === location.hash.slice(1)) ? location.hash.slice(1) : 'ahora',
-  state: null, insights: null, version: null, drill: null, answer: null, picked: null,
+  state: null, insights: null, version: null, drill: null, answer: null, picked: null, ai: null, copied: null, connecting: null,
   side: 'white', path: null, branch: null, dismissed: false, lastSeen: null, toast: null, lastJson: ''
 };
 
@@ -165,6 +177,7 @@ function setTab(id) {
   S.tab = id;
   history.replaceState(null, '', '#' + id);
   if (id === 'errores' && !S.drill) j('/api/drill').then(d => { S.drill = d; render(); });
+  if (id === 'ia') loadAI();
   render();
 }
 
@@ -189,7 +202,7 @@ function renderChrome() {
   document.getElementById('tabs').innerHTML = TABS.map(([id, label]) =>
     `<button class="tab" data-tab="${id}" ${id === S.tab ? 'aria-current="page"' : ''}>${label}</button>`).join('');
   const st = S.state;
-  if (st) document.getElementById('who').innerHTML = `<b>${esc(st.user)}</b> · rapid <span class="mono" style="color:var(--text)">${esc(st.rating.now)}</span>`;
+  if (st) document.getElementById('who').innerHTML = `<b>${esc(st.user)}</b> · ${esc(st.tc)} <span class="mono" style="color:var(--text)">${esc(st.rating.now)}</span>`;
   const t = S.toast, box = document.getElementById('toast');
   if (box.dataset.url === (t ? t.url : '')) return;  // keep the banner still across re-renders
   box.dataset.url = t ? t.url : '';
@@ -206,7 +219,7 @@ function render() {
       <p style="margin-top:8px">La primera vez se baja todo tu archivo y Stockfish revisa un año de aperturas: tarda unos minutos. El panel se rellena solo.</p></div>`;
     return;
   }
-  const view = { ahora: viewNow, repertorio: viewRep, errores: viewDrill, ritmo: viewRhythm }[S.tab];
+  const view = { ahora: viewNow, repertorio: viewRep, errores: viewDrill, ritmo: viewRhythm, ia: viewAI }[S.tab];
   document.getElementById('view').innerHTML = view();
 }
 
@@ -262,21 +275,26 @@ function viewNow() {
         <div class="actions">${h.actions}</div>
       </div>
       <div class="card">
-        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px"><h2>Tus últimas partidas</h2><span class="muted" style="font-size:12px">rapid · clic para abrir en chess.com</span></div>
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px;margin-bottom:10px"><h2>Tus últimas partidas</h2><span class="muted" style="font-size:12px">${esc(st.tc)} · clic para abrir en chess.com</span></div>
         <div class="games">${games || '<p class="muted">Aún no hay partidas.</p>'}</div>
       </div>
     </section>
     <aside class="side-col">
       <div class="card">
-        <p class="muted" style="font-size:13px">Elo rapid ahora</p>
+        <p class="muted" style="font-size:13px">Elo ${esc(st.tc)} ahora</p>
         <p class="big" style="font-size:44px;margin-top:2px">${esc(st.rating.now)}</p>
         <p class="muted" style="font-size:13px;margin-top:4px">Tu máximo: ${esc(st.rating.best)} (${esc(st.rating.best_date)})</p>
       </div>
       <div class="card" style="display:flex;flex-direction:column;gap:14px">
         <h2 style="font-size:15px">Cómo juegas según el momento</h2>
         ${ctx}
-        <p class="muted" style="font-size:12px">% de puntos en tus ${esc((st.recent || 0).toLocaleString('es-ES'))} partidas de rapid del último año.</p>
+        <p class="muted" style="font-size:12px">% de puntos en tus ${esc((st.recent || 0).toLocaleString('es-ES'))} partidas de ${esc(st.tc)} del último año.</p>
       </div>
+      <button class="card" data-tab="ia" style="border:0;text-align:left;background:#14223A">
+        <p class="kicker" style="color:var(--blue)">Tu entrenador IA</p>
+        <p style="margin-top:6px;font-weight:600">Pregúntale a Claude por tus partidas →</p>
+        <p class="muted" style="margin-top:4px;font-size:13px">Lee lo mismo que este panel y te responde con tus números.</p>
+      </button>
     </aside>
   </div>`;
 }
@@ -345,7 +363,7 @@ function viewRep() {
       </div>
       <div class="path">${crumbs}<span class="ask">${moveLabel(L)} ?</span></div>
       <div class="branches">${rows || '<p class="muted">No hay más partidas por esta línea.</p>'}</div>
-      <p class="muted" style="margin-top:16px;font-size:12px">Barra = cuántas veces sale. Color = % de puntos: azul, por encima del 52 %; naranja, por debajo del 47 %. Rapid desde ${esc(S.insights.since)}.</p>
+      <p class="muted" style="margin-top:16px;font-size:12px">Barra = cuántas veces sale. Color = % de puntos: azul, por encima del 52 %; naranja, por debajo del 47 %. ${esc(S.state.tc[0].toUpperCase() + S.state.tc.slice(1))} desde ${esc(S.insights.since)}.</p>
     </section>
     <aside class="side-col card" style="padding:24px;background:var(--card-2)">
       <p class="kicker" style="color:var(--amber)">${esc(label(picked.s))}${names[[...path, picked.s].join(' ')] ? ' · ' + esc(names[[...path, picked.s].join(' ')]) : ''}</p>
@@ -440,7 +458,7 @@ function viewRhythm() {
   const acc = ins.accuracy || {};
   return `<div class="grid2">
     <section class="card">
-      <h2>Elo rapid, últimos ${m.length} meses</h2>
+      <h2>Elo ${esc(S.state.tc)}, últimos ${m.length} meses</h2>
       <p class="muted" style="margin:2px 0 14px;font-size:13px">De ${vals[0]} en ${esc(m[0].label)} a ${vals[vals.length - 1]} ahora.</p>
       <svg viewBox="0 0 600 180" role="img" aria-label="Curva de Elo" style="width:100%;height:auto;display:block">
         <line x1="0" y1="10" x2="600" y2="10" stroke="#222C27"/><line x1="0" y1="90" x2="600" y2="90" stroke="#222C27"/><line x1="0" y1="170" x2="600" y2="170" stroke="#222C27"/>
@@ -465,7 +483,7 @@ function viewRhythm() {
     <section class="card">
       <h2>El reloj cuando pierdes</h2>
       <p class="big" style="margin-top:14px;font-size:48px;color:var(--orange)">${mmss(ins.clock.loss_median)}</p>
-      <p style="margin-top:4px;color:var(--soft)">te sobran de mediana cuando pierdes una partida de 10 minutos. En el ${ins.clock.over_3min} % de tus derrotas te quedaban 3 minutos o más.</p>
+      <p style="margin-top:4px;color:var(--soft)">te sobran de mediana cuando pierdes. En el ${ins.clock.over_3min} % de tus derrotas te quedaban 3 minutos o más.</p>
     </section>
     <section class="card">
       <h2>Precisión según chess.com</h2>
@@ -478,12 +496,104 @@ function viewRhythm() {
   </div>`;
 }
 
+// --- Tu entrenador IA -------------------------------------------------------------------------
+async function loadAI() {
+  try { S.ai = await j('/api/ai'); } catch (e) { S.ai = { error: true }; }
+  if (S.tab === 'ia') render();
+}
+
+function asks() {
+  const st = S.state, last = st.latest, out = [];
+  if (last) out.push(`Revisa mi última partida (${last.result.toLowerCase()} con ${last.side} contra ${last.opp}) y dime dónde se me fue.`);
+  if (st.today.state === 'streak' || st.today.state === 'loss') out.push('Acabo de perder. ¿Sigo jugando o lo dejo por hoy?');
+  out.push('Ponme a prueba con mis errores de apertura, de uno en uno.');
+  out.push('¿Qué apertura me está costando más puntos y qué juego en su lugar?');
+  out.push(`¿Cómo he evolucionado en ${st.tc} los últimos 6 meses?`);
+  out.push('¿A qué horas juego peor? ¿Cuándo debería jugar?');
+  out.push('Prepárame un plan de entrenamiento para esta semana.');
+  return out.slice(0, 6);
+}
+
+function connector(key, name, what, cmd, url) {
+  const a = S.ai[key];
+  let state, action = '';
+  if (a.connected) state = `<span class="dot" aria-hidden="true"></span>Conectado`;
+  else if (!a.available) {
+    state = `<span class="dot off" aria-hidden="true"></span>No lo tienes instalado`;
+    action = `<a class="btn ghost" style="margin-top:14px" href="${url}" target="_blank" rel="noopener">Descargar ${name}</a>`;
+  } else {
+    state = `<span class="dot off" aria-hidden="true"></span>Sin conectar`;
+    const busy = S.connecting === key;
+    action = `<button class="btn" style="margin-top:14px;background:var(--blue)" data-connect="${key}" ${busy ? 'disabled' : ''}>${busy ? 'Conectando…' : 'Conectar teachess'}</button>`;
+  }
+  const note = S.ai.notes && S.ai.notes[key] ? `<p style="margin-top:10px;font-size:13px;color:${S.ai.notes[key].error ? 'var(--orange)' : 'var(--live)'}">${esc(S.ai.notes[key].text)}</p>` : '';
+  return `<div class="card">
+    <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px"><h2 style="font-size:15px">${name}</h2><span class="status">${state}</span></div>
+    <p class="muted" style="margin-top:6px;font-size:13px">${what}</p>
+    ${cmd ? `<div class="cmd"><span>${esc(cmd)}</span><button data-copy="${esc(cmd)}">${S.copied === cmd ? 'Copiado' : 'Copiar'}</button></div>` : ''}
+    ${action}${note}
+  </div>`;
+}
+
+function viewAI() {
+  const ai = S.ai;
+  const rows = asks().map(q => `<button class="ask-row ${S.copied === q ? 'done' : ''}" data-copy="${esc(q)}">
+      <span>${esc(q)}</span><span class="go">${S.copied === q ? 'Copiado ✓' : 'Copiar'}</span></button>`).join('');
+  const side = !ai ? '<div class="card"><p class="muted">Mirando si tienes Claude…</p></div>'
+    : ai.error ? '<div class="card"><p class="muted">No he podido comprobar tus apps de Claude.</p></div>'
+    : connector('claude_desktop', 'Claude Desktop', 'La app de Claude. Una vez conectado, pregúntale en cualquier chat.', '', 'https://claude.ai/download')
+      + connector('claude_code', 'Claude Code', ai.coach ? 'Tu entrenador tiene su carpeta y un diario (notas.md) donde apunta lo que trabajáis. Ábrelo en el terminal:'
+        : 'Crea tu entrenador: una carpeta con su diario (notas.md), para que recuerde lo que trabajáis. En el terminal:',
+        'teachess coach', 'https://claude.com/claude-code');
+  return `<div class="row">
+    <section class="main-col">
+      <div class="hero" style="background:#14223A">
+        <p class="kicker" style="color:var(--blue)">Tu entrenador IA</p>
+        <h1>Pregúntale a Claude por tus partidas.</h1>
+        <p class="body">Claude lee lo mismo que este panel: tus partidas, cada jugada revisada por Stockfish y tus tarjetas. Te responde con tus números, revisa la partida que acabas de jugar y te pone a prueba con tus propios errores.</p>
+        <div class="tools" aria-label="Lo que puede consultar">${['today', 'review', 'openings', 'progress', 'games', 'drill', 'sync'].map(t => `<span>${t}</span>`).join('')}</div>
+      </div>
+      <div class="card">
+        <div style="display:flex;justify-content:space-between;align-items:baseline;gap:12px"><h2>Pídele, por ejemplo</h2><span class="muted" style="font-size:12px">clic para copiar · pégalo en Claude</span></div>
+        <div class="asks">${rows}</div>
+      </div>
+    </section>
+    <aside class="side-col">${side}
+      <p class="muted" style="font-size:12px;padding:0 6px">Todo se queda en tu ordenador: Claude abre teachess aquí mismo para leer tus datos, y nada se sube a chess.com.</p>
+    </aside>
+  </div>`;
+}
+
+async function copy(text) {
+  try { await navigator.clipboard.writeText(text); } catch (e) {
+    const t = document.createElement('textarea'); t.value = text; document.body.appendChild(t); t.select();
+    try { document.execCommand('copy'); } finally { t.remove(); }
+  }
+  S.copied = text; render();
+  setTimeout(() => { if (S.copied === text) { S.copied = null; render(); } }, 2000);
+}
+
+async function connect(key) {
+  S.connecting = key; render();
+  const notes = (S.ai && S.ai.notes) || {};
+  try {
+    const r = await fetch('/api/ai/connect', { method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ target: key.replace('_', '-') }) });
+    const d = await r.json();
+    if (!r.ok) notes[key] = { error: true, text: d.error || 'No he podido conectarlo.' };
+    else { S.ai = d.status_now; notes[key] = { text: d.note || 'Conectado.' }; }
+  } catch (e) { notes[key] = { error: true, text: 'El panel no responde: ¿sigue abierto teachess dash?' }; }
+  S.connecting = null; S.ai.notes = notes; render();
+}
+
 // --- events -----------------------------------------------------------------------------------
 document.addEventListener('click', e => {
   const el = e.target.closest('button');
   if (!el) return;
   const ds = el.dataset;
   if (ds.tab) return setTab(ds.tab);
+  if (ds.copy) return copy(ds.copy);
+  if (ds.connect) return connect(ds.connect);
   if (ds.side) { S.side = ds.side; S.branch = null; return render(); }
   if (ds.branch) { S.branch = ds.branch; return render(); }
   if (ds.descend) { S.path[S.side] = [...S.path[S.side], ds.descend]; S.branch = null; return render(); }
@@ -503,6 +613,7 @@ load();
 setInterval(load, 15000);
 setInterval(renderPill, 5000);
 if (S.tab === 'errores') j('/api/drill').then(d => { S.drill = d; render(); });
+if (S.tab === 'ia') loadAI();
 </script>
 </body>
 </html>

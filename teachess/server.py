@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import errno
 import json
 import threading
 import time
@@ -10,6 +11,7 @@ from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 from . import core, drills
+from .errors import SetupError
 
 STATIC = Path(__file__).parent / "static"
 POLL_SECONDS = 120
@@ -65,7 +67,7 @@ class Store:
             if rapid:
                 latest = {**core.describe(rapid[-1]), "review": self.review(rapid[-1])}
             return {
-                "user": DISPLAY_NAME, "rating": core.rating_now(games), "today": t,
+                "user": DISPLAY_NAME, "tc": core.tc(), "rating": core.rating_now(games), "today": t,
                 "games": [core.describe(g) for g in rapid[-7:]][::-1], "latest": latest,
                 "context": context, "recent": self.report.get("totals", {}).get("recent"),
                 "version": self.version,
@@ -156,7 +158,17 @@ def make_handler(store: Store):
             self.end_headers()
             self.wfile.write(body)
 
+        def local(self) -> bool:
+            """Only this machine's own pages: a site open in another tab could otherwise reach the server, by
+            posting to it or by pointing its own domain at 127.0.0.1 (DNS rebinding)."""
+            port = self.server.server_address[1]
+            hosts = {f"localhost:{port}", f"127.0.0.1:{port}"}
+            origin = self.headers.get("Origin")
+            return self.headers.get("Host") in hosts and (origin is None or origin in {f"http://{h}" for h in hosts})
+
         def do_GET(self):
+            if not self.local():
+                return self.send_json({"error": "forbidden"}, 403)
             path = self.path.split("?", 1)[0]
             if path in ("/", "/index.html"):
                 body = (STATIC / "dash.html").read_bytes()
@@ -171,17 +183,27 @@ def make_handler(store: Store):
                 self.send_json(store.insights())
             elif path == "/api/drill":
                 self.send_json(store.drill())
+            elif path == "/api/ai":
+                from . import mcp
+                self.send_json(mcp.status())
             else:
                 self.send_json({"error": "not found"}, 404)
 
+        def body(self):
+            length = int(self.headers.get("Content-Length") or 0)
+            if not 0 < length <= 4096 or (self.headers.get("Content-Type") or "").split(";")[0].strip() != "application/json":
+                raise ValueError
+            return json.loads(self.rfile.read(length))
+
         def do_POST(self):
+            if not self.local():
+                return self.send_json({"error": "forbidden"}, 403)
+            if self.path == "/api/ai/connect":
+                return self.connect()
             if self.path != "/api/drill":
                 return self.send_json({"error": "not found"}, 404)
-            length = int(self.headers.get("Content-Length") or 0)
-            if not 0 < length <= 4096:
-                return self.send_json({"error": "bad request"}, 400)
             try:
-                body = json.loads(self.rfile.read(length))
+                body = self.body()
                 card_id, san = body["id"], body["san"]
                 if not (isinstance(card_id, str) and isinstance(san, str) and len(card_id) <= 16 and len(san) <= 10):
                     raise ValueError
@@ -196,6 +218,21 @@ def make_handler(store: Store):
                 except ValueError as e:
                     self.send_json({"error": str(e)}, 400)
 
+        def connect(self):
+            """Plug teachess into Claude Code or Claude Desktop, as `teachess mcp install` does."""
+            from . import mcp
+            try:
+                target = self.body()["target"]
+                if target not in ("claude-code", "claude-desktop"):
+                    raise ValueError
+            except (ValueError, KeyError, TypeError):
+                return self.send_json({"error": "bad request"}, 400)
+            try:
+                result = mcp.install(target)
+            except SetupError as e:
+                return self.send_json({"error": str(e)}, 400)
+            self.send_json({**result, "status_now": mcp.status()})
+
     return Handler
 
 
@@ -203,9 +240,15 @@ def serve(port: int = 4747, open_browser: bool = True, live: bool = True, at=Non
     global DISPLAY_NAME
     DISPLAY_NAME = display_name()
     live = live and at is None
-    store = Store(live, at)
-    httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(store))
     url = f"http://localhost:{port}"
+    store = Store(live, at)
+    try:
+        httpd = ThreadingHTTPServer(("127.0.0.1", port), make_handler(store))
+    except OSError as e:
+        if e.errno != errno.EADDRINUSE:
+            raise
+        raise SetupError(f"El puerto {port} ya está en uso: ¿tienes otro teachess dash abierto? Está en {url}; "
+                         f"si no es teachess, usa teachess dash --port {port + 1}.") from None
     total = len(store.games)
     print(f"  ▸ {total:,} partidas de {DISPLAY_NAME} cargadas".replace(",", "."))
     print(f"  ▸ Panel en {url}" + ("  (abriendo el navegador)" if open_browser else ""))

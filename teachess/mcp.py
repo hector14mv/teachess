@@ -169,6 +169,28 @@ def serve() -> None:
 
 # --- install ----------------------------------------------------------------------------------
 
+def status() -> dict:
+    """Where teachess is already plugged in, for the dashboard's AI tab. An entry pointing at another command
+    (an old checkout, a moved install) does not count as connected: installing again fixes it."""
+    def entry(path: Path):
+        try:
+            return json.loads(path.read_text()).get("mcpServers", {}).get("teachess")
+        except (OSError, ValueError, AttributeError):
+            return None
+
+    code, desk = entry(Path.home() / ".claude.json"), entry(desktop_config())
+    env = paths.env()
+    coach_dir = Path.home() / "teachess-coach"
+    return {
+        "claude_code": {"available": shutil.which("claude") is not None,
+                        "connected": bool(code) and code.get("command") == str(BIN) and code.get("args") == ["mcp"]
+                        and (code.get("env") or {}) == env},
+        "claude_desktop": {"available": desktop_config().parent.exists() or Path("/Applications/Claude.app").exists(),
+                           "connected": desk == {"command": str(BIN), "args": ["mcp"], **({"env": env} if env else {})}},
+        "coach": str(coach_dir) if (coach_dir / "CLAUDE.md").exists() else None,
+    }
+
+
 def install(target: str) -> dict:
     return install_claude_code() if target == "claude-code" else install_claude_desktop()
 

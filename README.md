@@ -26,7 +26,7 @@ your own games: the time control you play most, how many games each window holds
 your machine (measured on a sample). It recommends the shortest window with about 300 games, because recent games
 say how you play now; with a small archive it analyses everything without asking. Only the window you pick is
 downloaded; `~` marks a count estimated from the size of months not downloaded yet. A first install takes about
-five minutes for 500 games.
+five minutes for 500 games, and it ends by opening the dashboard in your browser.
 
 ```
 ¿Cuánto historial quieres que analice? Stockfish mira cada jugada.
@@ -138,7 +138,8 @@ The coach folder and the MCP server work together: the folder's settings allow b
 
 ## A dashboard, if you want one
 
-`teachess dash` opens a local dashboard with four tabs, all built from your own games:
+`teachess dash` opens a local dashboard with five tabs, all built from your own games. Setup opens it on its own
+when it finishes.
 
 - **Ahora (Now):** the state of your session, the losing-streak meter, your latest games. When you finish a game
   on chess.com it shows up within two minutes with Stockfish's verdict: "error on move 7, the same one as in
@@ -148,6 +149,8 @@ The coach folder and the MCP server work together: the folder's settings allow b
   back tomorrow if you miss it and later each time you get it right (Leitner boxes, shared with `teachess drill`).
 - **Ritmo (Rhythm):** rating curve, the move of your first serious mistake, a heat map of when you play and when you
   win, the clock you have left when you lose.
+- **Tu entrenador IA (Your AI coach):** questions to ask Claude about your games, built from your latest one, and a
+  button that connects teachess to Claude Desktop or Claude Code (the same as `teachess mcp install`).
 
 | Repertoire | Your mistakes |
 |---|---|
@@ -200,8 +203,8 @@ chess.com public API ─▶ fetch_games  ─▶ data/raw/YYYY-MM.json
 checks, one stop per streak, failed notifications, a corrupt state file, two watchers at once) on synthetic games;
 `tests/test_drills.py` covers the plan-aware deck (illegal plan moves, plan changes, cramped positions),
 `tests/test_analysis.py` blunder detection, the depth-18 check and the setup options, `tests/test_setup.py`
-the username step, and `tests/test_install.py` the move of an old checkout's data, the quick setup options and the
-progress bar.
+the username step, and `tests/test_install.py` the move of an old checkout's data, the quick setup options, the
+progress bar and the dashboard's AI tab.
 
 ## Limits
 

@@ -218,6 +218,8 @@ check("a shared family names the line", names.get("e4 e5 Nf3 Nc6 Bb5"), "Ruy Lop
 check("a majority names the parent", names.get("e4 e5 Nf3 Nc6"), "Ruy Lopez")
 named.append({**named[2]})
 check("a split line has no name", core.branch_names(named, "2026-01-01")["white"].get("e4 e5 Nf3 Nc6"), None)
+unnamed = named[:1] + [{**named[0], "opening": None} for _ in range(3)]
+check("games without an opening count in the total", core.branch_names(unnamed, "2026-01-01")["white"].get("e4"), None)
 
 progress.QUIET = True
 out = io.StringIO()

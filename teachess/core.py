@@ -742,13 +742,19 @@ def branch_names(games: list[dict], since: str, depth: int = 10) -> dict:
     it: after 1.e4 e5 2.Nf3 Nc6 the Spanish and the Italian are both still to come, so the line has no name yet."""
     counts = {"white": defaultdict(Counter), "black": defaultdict(Counter)}
     for g in games:
-        if g["time_class"] != tc() or g["end"] < since or not g["opening"]:
+        if g["time_class"] != tc() or g["end"] < since:
             continue
-        fam = build_report.family(g["opening"])
+        fam = build_report.family(g["opening"]) if g["opening"] else None  # unnamed games still count in the total
         for n in range(1, min(depth, len(g["sans"])) + 1):
             counts[g["color"]][" ".join(g["sans"][:n])][fam] += 1
-    return {c: {line: cnt.most_common(1)[0][0] for line, cnt in lines.items()
-                if cnt.most_common(1)[0][1] > sum(cnt.values()) / 2} for c, lines in counts.items()}
+    out = {}
+    for c, lines in counts.items():
+        out[c] = {}
+        for line, cnt in lines.items():
+            named = [(fam, n) for fam, n in cnt.most_common() if fam is not None]
+            if named and named[0][1] > sum(cnt.values()) / 2:
+                out[c][line] = named[0][0]
+    return out
 
 
 def progress(games: list[dict] | None = None, report: dict | None = None, months: int = 6) -> dict:

@@ -235,6 +235,7 @@ function render() {
   }
   const view = { ahora: viewNow, repertorio: viewRep, errores: viewDrill, ritmo: viewRhythm, ia: viewAI }[S.tab];
   document.getElementById('view').innerHTML = view();
+  applyHover();
 }
 
 // --- Ahora ------------------------------------------------------------------------------------
@@ -407,7 +408,7 @@ function viewRep() {
   let kicker, title, body, advice = '';
   if (!L) {
     kicker = side === 'white' ? 'Con blancas' : 'Con negras';
-    title = side === 'white' ? (kids.length === 1 ? `Siempre abres con 1.${kids[0].s}` : 'Tu primera jugada') : 'Lo que te juegan';
+    title = side === 'white' ? (kids.length === 1 && kids[0].n === node.n ? `Siempre abres con 1.${kids[0].s}` : 'Tu primera jugada') : 'Lo que te juegan';
     body = 'Toca una jugada para jugarla en el tablero y ver lo que viene después. Con ← Atrás, o la tecla ←, vuelves.';
   } else {
     const P = L - 1, before = path.slice(0, P), parent = nodeAt(side, before), cur = node;
@@ -688,15 +689,19 @@ document.addEventListener('click', e => {
   if (ds.act === 'close-toast') { S.toast = null; return renderChrome(); }
 });
 
-function play(san) { S.path[S.side] = [...S.path[S.side], san]; render(); }
-function back() { if (S.path && S.path[S.side].length) { S.path[S.side] = S.path[S.side].slice(0, -1); render(); } }
+function play(san) { S.path[S.side] = [...S.path[S.side], san]; S.hover = null; render(); }
+function back() { if (S.path && S.path[S.side].length) { S.path[S.side] = S.path[S.side].slice(0, -1); S.hover = null; render(); } }
 
-// Hovering a move lights its arrow on the board and dims the rest
+// Hovering a move lights its arrow on the board and dims the rest; render() calls it again on the new arrows
+function applyHover() {
+  const san = S.hover;
+  document.querySelectorAll('.arrows g').forEach(g => g.setAttribute('opacity', !san ? g.dataset.o : g.dataset.san === san ? 1 : .18));
+}
 document.addEventListener('mouseover', e => {
   const el = e.target.closest('[data-san]:not(g)'), san = el ? el.dataset.san : null;
   if (san === S.hover) return;
   S.hover = san;
-  document.querySelectorAll('.arrows g').forEach(g => g.setAttribute('opacity', !san ? g.dataset.o : g.dataset.san === san ? 1 : .18));
+  applyHover();
 });
 
 document.addEventListener('keydown', e => {

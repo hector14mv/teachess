@@ -76,10 +76,11 @@ h2 { font-size: 17px; }
 .path { margin-top: 18px; display: flex; flex-wrap: wrap; gap: 6px; font-family: var(--mono); font-size: 14px; }
 .path button { padding: 6px 10px; border-radius: 8px; border: 0; background: #1E2823; min-height: 36px; }
 .path button:hover { background: #26332D; }
+.path button:disabled { opacity: .4; cursor: default; }
 .path .ask { padding: 6px 10px; border-radius: 8px; background: #3A2F14; color: #F2D184; display: inline-flex; align-items: center; }
 .branches { margin-top: 22px; display: flex; flex-direction: column; gap: 8px; }
-.branch { text-align: left; min-height: 64px; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--bar); display: grid; grid-template-columns: 96px minmax(0,1fr) 64px; gap: 14px; align-items: center; transition: border-color .15s, background .15s; }
-.branch:hover { background: #18211D; }
+.branch { text-align: left; min-height: 64px; padding: 12px 16px; border-radius: 12px; border: 1px solid var(--line); background: var(--bar); display: grid; grid-template-columns: 96px minmax(0,1fr) 64px 18px; gap: 14px; align-items: center; transition: border-color .15s, background .15s; }
+.branch:hover { background: #18211D; border-color: var(--line-2); }
 .branch[aria-pressed="true"] { border-color: var(--amber); background: #1E2A25; }
 .branch .san { font-family: var(--mono); font-size: 17px; font-weight: 700; }
 .branch .pct { font-family: var(--mono); font-size: 17px; font-weight: 700; text-align: right; }
@@ -113,9 +114,8 @@ h2 { font-size: 17px; }
 .ghost-branch { border-style: dashed; border-color: #2F5A44; background: transparent; cursor: default; }
 .sf { margin-left: 6px; padding: 1px 6px; border-radius: 6px; background: #173A2A; color: var(--live); font-family: var(--mono); font-size: 11px; }
 .sf.bad { background: #3A2614; color: var(--orange); }
-.twig { margin: 6px 0 4px 26px; display: flex; flex-wrap: wrap; gap: 6px; }
-.twig button { display: inline-flex; gap: 8px; align-items: center; min-height: 36px; padding: 0 10px; border-radius: 8px; border: 1px solid var(--line); background: var(--ground); font-size: 13px; }
-.twig button:hover { border-color: var(--line-2); background: #18211D; }
+.branch .go { color: var(--muted); font-size: 18px; }
+.branch:hover .go { color: var(--text); }
 .empty { padding: 40px; text-align: center; color: var(--muted); }
 .asks { margin-top: 6px; display: flex; flex-direction: column; }
 .ask-row { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 14px; align-items: center; min-height: 56px; padding: 10px 4px; border: 0; border-top: 1px solid var(--line); background: transparent; text-align: left; font-size: 15px; color: var(--text); border-radius: 0; }
@@ -154,7 +154,7 @@ const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 const S = {
   tab: TABS.some(t => t[0] === location.hash.slice(1)) ? location.hash.slice(1) : 'ahora',
   state: null, insights: null, version: null, drill: null, answer: null, picked: null, ai: null, copied: null, connecting: null, lines: {}, lineGen: 0,
-  side: 'white', path: null, branch: null, dismissed: false, lastSeen: null, toast: null, lastJson: ''
+  side: 'white', path: null, hover: null, dismissed: false, lastSeen: null, toast: null, lastJson: ''
 };
 
 const esc = s => String(s ?? '').replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -348,7 +348,7 @@ function arrowsSvg(list, flip) {
     const head = .42, half = Math.max(.2, a.width * 1.7);
     const bx = x2 - ux * head, by = y2 - uy * head;
     const sx = x1 + ux * .18, sy = y1 + uy * .18;
-    return `<g opacity="${a.opacity}"><line x1="${sx}" y1="${sy}" x2="${bx}" y2="${by}" stroke="${a.color}" stroke-width="${a.width}" stroke-linecap="round" ${a.dash ? 'stroke-dasharray=".18 .14"' : ''}/>
+    return `<g data-san="${esc(a.san)}" data-o="${a.opacity}" opacity="${a.opacity}"><line x1="${sx}" y1="${sy}" x2="${bx}" y2="${by}" stroke="${a.color}" stroke-width="${a.width}" stroke-linecap="round" ${a.dash ? 'stroke-dasharray=".18 .14"' : ''}/>
       <polygon points="${x2},${y2} ${bx - uy * half},${by + ux * half} ${bx + uy * half},${by - ux * half}" fill="${a.color}"/></g>`;
   }).join('');
   return `<svg class="arrows" viewBox="0 0 8 8" aria-hidden="true">${shapes}</svg>`;
@@ -357,20 +357,17 @@ function arrowsSvg(list, flip) {
 function viewRep() {
   if (!S.insights) return '<p class="empty">Cargando…</p>';
   const side = S.side, path = currentPath(), node = nodeAt(side, path), L = path.length;
-  const mine = (side === 'white') === (L % 2 === 0);
+  const mine = (side === 'white') === (L % 2 === 0);  // whose move it is now
   const kids = node.k;
   const names = S.insights.names[side] || {};
-  const parentName = names[path.join(' ')];
+  const nameOf = p => names[p.join(' ')];
   const maxN = Math.max(1, ...kids.map(k => k.n));
-  const solid = kids.filter(k => k.n >= 15);
-  const top = solid.length ? solid.reduce((a, b) => (b.p > a.p ? b : a)) : null;
-  const picked = kids.find(k => k.s === S.branch) || kids[0];
-  const note = (S.insights.advice || {})[`${side}|${path.join(' ')}`];
   const label = s => moveLabel(L) + s;
   const ln = getLine(side, path), ready = ln && !ln.error;
   const best = ready && mine ? ln.best : null;
   const sq = san => { const m = ready && ln.moves.find(x => x.san === san); return m ? m.squares : null; };
-  const crumbs = [`<button data-depth="0">Inicio</button>`].concat(path.map((s, i) =>
+  const crumbs = [`<button data-back="1" ${L ? '' : 'disabled'} aria-label="Deshacer la última jugada">← Atrás</button>`,
+    `<button data-depth="0">Inicio</button>`].concat(path.map((s, i) =>
     `<button data-depth="${i + 1}">${i % 2 === 0 ? moveLabel(i) : ''}${esc(s)}</button>`)).join('');
 
   // The board: where you are, the moves your games went on with, and Stockfish's when you never play it
@@ -378,65 +375,72 @@ function viewRep() {
   if (ready) {
     for (const k of kids) {
       const squares = sq(k.s);
-      if (squares) arrows.push({ squares, color: colorFor(k.p), width: .1 + .14 * k.n / maxN, opacity: k === picked ? 1 : .38 });
+      if (squares) arrows.push({ san: k.s, squares, color: colorFor(k.p), width: .1 + .14 * k.n / maxN, opacity: .85 });
     }
-    if (best && !kids.some(k => k.s === best.san)) arrows.push({ squares: best.squares, color: 'var(--live)', width: .1, opacity: .95, dash: true });
-    arrows.sort((a, b) => a.opacity - b.opacity);
+    if (best && !kids.some(k => k.s === best.san)) arrows.push({ san: best.san, squares: best.squares, color: 'var(--live)', width: .1, opacity: .95, dash: true });
   }
   const board = ready ? boardHtml(ln.fen, side === 'black', ln.last || [], arrowsSvg(arrows, side === 'black'))
     : `<div class="board" style="aspect-ratio:1;background:var(--card)"></div>`;
 
-  const missing = best && !kids.some(k => k.s === best.san) ? `<div class="leaf"><div class="branch ghost-branch">
-      <span class="san" style="color:var(--live)">${esc(label(best.san))}</span>
-      <span style="font-size:13px;color:#B8C4BD;min-width:0">La que elige Stockfish (${fmtEval(best.cp)}). ${best.n ? `Solo la has jugado ${best.n} ${best.n === 1 ? 'vez' : 'veces'}.` : 'No la juegas nunca.'}</span>
-      <span class="pct" style="color:var(--live)">${best.p != null ? best.p + '%' : '—'}</span></div></div>` : '';
-  if (!picked) return `<div class="row"><section style="flex:1 1 360px;min-width:0;max-width:460px">${board}</section>
-    <section class="main-col card" style="padding:26px"><div class="path" style="margin-top:0">${crumbs}</div>
-    <p class="muted" style="margin-top:18px">${L >= 10 ? 'Aquí se acaba el árbol: llega a las 5 primeras jugadas de cada bando.' : 'Aquí se acaba lo analizado: menos de 4 partidas siguen por esta línea.'}</p>
-    ${missing ? `<div class="branches tree">${missing}</div>` : ''}</section></div>`;
-
   const rows = kids.map(k => {
-    const nm = names[[...path, k.s].join(' ')];
-    const showName = nm && nm !== parentName ? `${esc(nm)} · ` : '';
+    const nm = nameOf([...path, k.s]);
+    const showName = nm && nm !== nameOf(path) ? `${esc(nm)} · ` : '';
     const isBest = best && best.san === k.s;
     const worse = best && !isBest && k.e != null ? best.cp - k.e : null;
     const tag = isBest ? `<span class="sf">★ Stockfish</span>` : worse != null && worse >= 30 ? `<span class="sf bad" title="Lo que pierdes frente a la jugada de Stockfish">${fmtEval(-worse)}</span>` : '';
-    const sub = k === picked && k.k.length ? `<div class="twig">${k.k.slice(0, 4).map(g =>
-      `<button data-descend2="${esc(k.s)} ${esc(g.s)}"><span class="mono">${esc(moveLabel(L + 1) + g.s)}</span><span class="mono" style="color:${colorFor(g.p)}">${g.p}%</span><span class="muted">${g.n}</span></button>`).join('')}</div>` : '';
-    return `<div class="leaf"><button class="branch" data-branch="${esc(k.s)}" aria-pressed="${k === picked}">
+    return `<div class="leaf"><button class="branch" data-play="${esc(k.s)}" data-san="${esc(k.s)}" aria-label="Jugar ${esc(label(k.s))}">
       <span class="san">${esc(label(k.s))}</span>
       <span style="display:flex;flex-direction:column;gap:6px;min-width:0">
         <span style="font-size:13px;color:#B8C4BD">${showName}${k.n} partidas ${tag}</span>
         <span style="height:8px;border-radius:4px;background:var(--line)"><span style="display:block;height:8px;border-radius:4px;width:${Math.round(100 * k.n / maxN)}%;background:${colorFor(k.p)}"></span></span>
       </span>
-      <span class="pct" style="color:${colorFor(k.p)}">${k.p}%</span></button>${sub}</div>`;
+      <span class="pct" style="color:${colorFor(k.p)}">${k.p}%</span><span class="go" aria-hidden="true">→</span></button></div>`;
   }).join('');
+  const missing = best && !kids.some(k => k.s === best.san) ? `<div class="leaf"><div class="branch ghost-branch" data-san="${esc(best.san)}">
+      <span class="san" style="color:var(--live)">${esc(label(best.san))}</span>
+      <span style="font-size:13px;color:#B8C4BD;min-width:0">La que elige Stockfish (${fmtEval(best.cp)}). ${best.n ? `Solo la has jugado ${best.n} ${best.n === 1 ? 'vez' : 'veces'}.` : 'No la juegas nunca.'}</span>
+      <span class="pct" style="color:var(--live)">${best.p != null ? best.p + '%' : '—'}</span><span></span></div></div>` : '';
+  const end = L >= 10 ? 'Aquí se acaba el árbol: llega a las 5 primeras jugadas de cada bando.'
+    : 'Aquí se acaba lo analizado: menos de 4 partidas siguen por esta línea.';
 
-  let title, body = `Un ${pct(picked.p)} % de los puntos en ${picked.n} partidas.`;
-  if (!mine) title = 'Respuesta de tu rival';
-  else if (note && note.move === picked.s) title = 'La línea recomendada';
-  else if (top && picked === top) title = side === 'white' && L === 4 ? 'Tu mejor línea' : 'Tu mejor opción aquí';
-  else if (picked.n < 15) title = 'Pocas partidas';
-  else if (picked.p <= 47) title = 'Aquí pierdes puntos';
-  else title = 'Una línea correcta';
-  if (!mine) body = `Cuando juega ${label(picked.s)}, sacas un ${pct(picked.p)} % de los puntos (${picked.n} partidas).`;
-  if (picked.e != null) body += ` Stockfish la deja en ${fmtEval(picked.e)} para ti.`;
-  if (best) body += best.san === picked.s ? ' Es la jugada que elige Stockfish.'
-    : ` Stockfish prefiere ${label(best.san)} (${fmtEval(best.cp)})${best.n ? `: la has jugado ${best.n} ${best.n === 1 ? 'vez' : 'veces'}, con un ${pct(best.p)} %.` : ', que no juegas nunca.'}`;
-  const advice = (note && note.text) || (mine && top ? `Tu mejor opción aquí es ${label(top.s)}: ${top.p} % en ${top.n} partidas.` : 'Aquí decide tu rival. Elige una rama para ver cómo te va.');
-  const deeper = picked.k.length ? `<button class="btn ghost" style="margin-top:16px" data-descend="${esc(picked.s)}">Ver lo que viene después →</button>` : '';
+  // The card: the move that brought you here, against the others played in the same position
+  let kicker, title, body, advice = '';
+  if (!L) {
+    kicker = side === 'white' ? 'Con blancas' : 'Con negras';
+    title = side === 'white' ? (kids.length === 1 ? `Siempre abres con 1.${kids[0].s}` : 'Tu primera jugada') : 'Lo que te juegan';
+    body = 'Toca una jugada para jugarla en el tablero y ver lo que viene después. Con ← Atrás, o la tecla ←, vuelves.';
+  } else {
+    const P = L - 1, before = path.slice(0, P), parent = nodeAt(side, before), cur = node;
+    const lastMine = (side === 'white') === (P % 2 === 0);
+    const at = s => moveLabel(P) + s;
+    const pl = getLine(side, before), pbest = lastMine && pl && !pl.error ? pl.best : null;
+    const solid = parent.k.filter(k => k.n >= 15);
+    const top = solid.length ? solid.reduce((a, b) => (b.p > a.p ? b : a)) : null;
+    const note = (S.insights.advice || {})[`${side}|${before.join(' ')}`];
+    kicker = at(path[P]) + (nameOf(path) ? ' · ' + nameOf(path) : '');
+    if (!lastMine) title = 'Respuesta de tu rival';
+    else if (note && note.move === path[P]) title = 'La línea recomendada';
+    else if (top && cur === top) title = side === 'white' && P === 4 ? 'Tu mejor línea' : 'Tu mejor opción aquí';
+    else if (cur.n < 15) title = 'Pocas partidas';
+    else if (cur.p <= 47) title = 'Aquí pierdes puntos';
+    else title = 'Una línea correcta';
+    body = lastMine ? `Un ${pct(cur.p)} % de los puntos en ${cur.n} partidas.`
+      : `Cuando juega ${at(path[P])}, sacas un ${pct(cur.p)} % de los puntos (${cur.n} partidas).`;
+    if (cur.e != null) body += ` Stockfish deja la posición en ${fmtEval(cur.e)} para ti.`;
+    if (pbest) body += pbest.san === path[P] ? ' Es la jugada que elige Stockfish.'
+      : ` Stockfish prefería ${at(pbest.san)} (${fmtEval(pbest.cp)})${pbest.n ? `: la has jugado ${pbest.n} ${pbest.n === 1 ? 'vez' : 'veces'}, con un ${pct(pbest.p)} %.` : ', que no juegas nunca.'}`;
+    advice = (note && note.text) || (lastMine && top && top !== cur ? `En esta posición lo que mejor te va es ${at(top.s)}: ${top.p} % en ${top.n} partidas.` : '');
+  }
   return `<div class="row">
     <section style="flex:1 1 360px;min-width:0;max-width:460px;display:flex;flex-direction:column;gap:20px">
       ${board}
       <div class="card" style="padding:22px;background:var(--card-2)">
-        <p class="kicker" style="color:var(--amber)">${esc(label(picked.s))}${names[[...path, picked.s].join(' ')] ? ' · ' + esc(names[[...path, picked.s].join(' ')]) : ''}</p>
+        <p class="kicker" style="color:var(--amber)">${esc(kicker)}</p>
         <h2 style="margin-top:8px;font-size:22px;line-height:1.2">${esc(title)}</h2>
         <p style="margin-top:10px;color:var(--soft)">${esc(body)}</p>
-        ${deeper}
-        <div style="margin-top:20px;padding:14px 16px;border-radius:12px;background:var(--ground)">
+        ${advice ? `<div style="margin-top:20px;padding:14px 16px;border-radius:12px;background:var(--ground)">
           <p class="muted" style="font-size:12px">Recomendación</p>
-          <p style="margin-top:4px;font-weight:600">${esc(advice)}</p>
-        </div>
+          <p style="margin-top:4px;font-weight:600">${esc(advice)}</p></div>` : ''}
       </div>
     </section>
     <section class="main-col card" style="padding:26px">
@@ -447,8 +451,10 @@ function viewRep() {
           <button data-side="black" aria-pressed="${side === 'black'}">Con negras</button>
         </div>
       </div>
-      <div class="path">${crumbs}<span class="ask">${moveLabel(L)} ${mine ? '¿qué juegas?' : '¿qué juega tu rival?'}</span></div>
-      <div class="branches tree">${rows || '<p class="muted">No hay más partidas por esta línea.</p>'}${missing}</div>
+      <div class="path">${crumbs}</div>
+      <p style="margin-top:20px;font-weight:600">${moveLabel(L)} ${mine ? '¿Qué juegas aquí?' : '¿Qué te juega tu rival aquí?'} <span class="muted" style="font-weight:400;font-size:13px">${kids.length ? 'Toca una para jugarla.' : ''}</span></p>
+      <div class="branches tree">${rows}${missing}</div>
+      ${kids.length ? '' : `<p class="muted" style="margin-top:12px">${end}</p>`}
       <p class="muted" style="margin-top:16px;font-size:12px">Grosor = cuántas veces sale. Color = % de puntos: azul, por encima del 52 %; naranja, por debajo del 47 %. Verde discontinuo: la jugada de Stockfish que no usas. ${esc(S.state.tc[0].toUpperCase() + S.state.tc.slice(1))} desde ${esc(S.insights.since)}.</p>
     </section>
   </div>`;
@@ -672,15 +678,34 @@ document.addEventListener('click', e => {
   if (ds.tab) return setTab(ds.tab);
   if (ds.copy) return copy(ds.copy);
   if (ds.connect) return connect(ds.connect);
-  if (ds.side) { S.side = ds.side; S.branch = null; return render(); }
-  if (ds.branch) { S.branch = ds.branch; return render(); }
-  if (ds.descend2) { S.path[S.side] = [...S.path[S.side], ...ds.descend2.split(' ')]; S.branch = null; return render(); }
-  if (ds.descend) { S.path[S.side] = [...S.path[S.side], ds.descend]; S.branch = null; return render(); }
-  if (ds.depth) { S.path[S.side] = S.path[S.side].slice(0, +ds.depth); S.branch = null; return render(); }
+  if (ds.side) { S.side = ds.side; return render(); }
+  if (ds.play) return play(ds.play);
+  if (ds.back) return back();
+  if (ds.depth) { S.path[S.side] = S.path[S.side].slice(0, +ds.depth); return render(); }
   if (ds.pick && !S.answer) return pick(ds.pick);
   if (ds.act === 'next') { S.answer = null; S.picked = null; S.drill = null; j('/api/drill').then(d => { S.drill = d; render(); }); return render(); }
   if (ds.act === 'dismiss') { S.dismissed = true; return render(); }
   if (ds.act === 'close-toast') { S.toast = null; return renderChrome(); }
+});
+
+function play(san) { S.path[S.side] = [...S.path[S.side], san]; render(); }
+function back() { if (S.path && S.path[S.side].length) { S.path[S.side] = S.path[S.side].slice(0, -1); render(); } }
+
+// Hovering a move lights its arrow on the board and dims the rest
+document.addEventListener('mouseover', e => {
+  const el = e.target.closest('[data-san]:not(g)'), san = el ? el.dataset.san : null;
+  if (san === S.hover) return;
+  S.hover = san;
+  document.querySelectorAll('.arrows g').forEach(g => g.setAttribute('opacity', !san ? g.dataset.o : g.dataset.san === san ? 1 : .18));
+});
+
+document.addEventListener('keydown', e => {
+  if (S.tab !== 'repertorio' || e.metaKey || e.ctrlKey || e.altKey || /INPUT|TEXTAREA|SELECT/.test(document.activeElement.tagName)) return;
+  if (e.key === 'ArrowLeft') { e.preventDefault(); back(); }
+  if (e.key === 'ArrowRight') {  // the move you (or your rivals) play most
+    const node = nodeAt(S.side, currentPath());
+    if (node && node.k.length) { e.preventDefault(); play(node.k[0].s); }
+  }
 });
 
 window.addEventListener('hashchange', () => {

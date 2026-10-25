@@ -209,6 +209,16 @@ try:
 except ValueError:
     check("a null move is no move", True, True)
 
+# a line is named only once most of its games share an opening family
+named = [{"color": "white", "time_class": "rapid", "end": "2026-10-01", "sans": ["e4", "e5", "Nf3", "Nc6", m], "opening": o}
+         for m, o in [("Bb5", "Ruy Lopez"), ("Bb5", "Ruy Lopez"), ("Bc4", "Italian Game")]]
+core.build_report.family = lambda o: o
+names = core.branch_names(named, "2026-01-01")["white"]
+check("a shared family names the line", names.get("e4 e5 Nf3 Nc6 Bb5"), "Ruy Lopez")
+check("a majority names the parent", names.get("e4 e5 Nf3 Nc6"), "Ruy Lopez")
+named.append({**named[2]})
+check("a split line has no name", core.branch_names(named, "2026-01-01")["white"].get("e4 e5 Nf3 Nc6"), None)
+
 progress.QUIET = True
 out = io.StringIO()
 bar = progress.Bar("Analizando", 8, stream=out)

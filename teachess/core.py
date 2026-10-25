@@ -696,6 +696,45 @@ def heatmap(games: list[dict], since: str) -> list[dict]:
         for b in range(8)]} for wd in range(7)]
 
 
+def line(games: list[dict], evals: dict, color: str, sans: list[str], since: str) -> dict:
+    """One position of the repertoire tab: the board after `sans`, every move the player's games went on with
+    (squares, games, % of points) and Stockfish's choice, so the tab can show a move the player never plays.
+    Raises ValueError on an illegal line."""
+    board = chess.Board()
+    last = None
+    for san in sans:
+        move = board.parse_san(san)
+        last = [chess.square_name(move.from_square), chess.square_name(move.to_square)]
+        board.push(move)
+
+    def squares(san: str) -> list[str]:
+        move = board.parse_san(san)
+        return [chess.square_name(move.from_square), chess.square_name(move.to_square)]
+
+    played = defaultdict(list)
+    for g in games:
+        if g["color"] == color and g["time_class"] == tc() and g["end"] >= since \
+                and len(g["sans"]) > len(sans) and g["sans"][:len(sans)] == sans:
+            played[g["sans"][len(sans)]].append(g["score"])
+    moves = []
+    for san, scores in sorted(played.items(), key=lambda kv: -len(kv[1])):
+        try:
+            moves.append({"san": san, "squares": squares(san), "n": len(scores),
+                          "p": round(100 * sum(scores) / len(scores))})
+        except ValueError:  # a game that was not standard chess from here
+            continue
+    best = None
+    ev = evals.get(key(board))
+    if ev and ev.get("best"):
+        with contextlib.suppress(ValueError):
+            scores = played.get(ev["best"], [])
+            best = {"san": ev["best"], "squares": squares(ev["best"]),
+                    "cp": (1 if color == "white" else -1) * ev["cp"],  # evals are from White's side
+                    "n": len(scores), "p": round(100 * sum(scores) / len(scores)) if scores else None}
+    mine = (board.turn == chess.WHITE) == (color == "white")
+    return {"fen": board.fen(), "last": last, "mine": mine, "moves": moves, "best": best}
+
+
 def branch_names(games: list[dict], since: str, depth: int = 10) -> dict:
     """Most common opening family of the games that went through each line, per colour."""
     counts = {"white": defaultdict(Counter), "black": defaultdict(Counter)}

@@ -144,7 +144,10 @@ when it finishes.
 - **Ahora (Now):** the state of your session, the losing-streak meter, your latest games. When you finish a game
   on chess.com it shows up within two minutes with Stockfish's verdict: "error on move 7, the same one as in
   11 earlier games".
-- **Repertorio (Repertoire):** your opening tree, move by move, coloured by the points you score in each line.
+- **Repertorio (Repertoire):** your opening tree, move by move, on a board: an arrow for each move your games went
+  on with, as thick as how often you play it and coloured by the points you score with it. Where Stockfish prefers
+  a move you never play, it shows as a dashed green arrow, and each of your moves says how much it gives away
+  against it.
 - **Tus errores (Your mistakes):** a board with the positions where you keep making the same mistake. Pick a move; the card comes
   back tomorrow if you miss it and later each time you get it right (Leitner boxes, shared with `teachess drill`).
 - **Ritmo (Rhythm):** rating curve, the move of your first serious mistake, a heat map of when you play and when you

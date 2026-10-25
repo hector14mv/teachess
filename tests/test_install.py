@@ -180,6 +180,30 @@ check("this command is connected", mcp.status()["claude_code"]["connected"], Tru
 check("a malformed entry is not connected", mcp.status()["claude_code"]["connected"], False)
 pathlib.Path.home = real_home
 
+# --- the repertoire board: the moves played from a position, and Stockfish's when it is not among them ---
+core.tc = lambda: "rapid"
+rep = [{"color": "white", "time_class": "rapid", "end": "2026-10-01", "sans": ["e4", "e5", m, "Nc6"], "score": sc}
+       for m, sc in [("Nf3", 1), ("Nf3", 0), ("Bc4", 1)]]
+rep.append({**rep[0], "end": "2020-01-01", "sans": ["e4", "e5", "Qh5"]})  # outside the window
+rep.append({**rep[0], "color": "black"})  # the other colour
+pos = chess.Board()
+pos.push_san("e4")
+pos.push_san("e5")
+ln = core.line(rep, {core.key(pos): {"cp": -40, "best": "d4"}}, "black", ["e4", "e5"], "2026-01-01")
+check("not my move as black", ln["mine"], False)
+ln = core.line(rep, {core.key(pos): {"cp": 40, "best": "d4"}}, "white", ["e4", "e5"], "2026-01-01")
+check("moves played, window and colour kept", [(m["san"], m["n"], m["p"]) for m in ln["moves"]], [("Nf3", 2, 50), ("Bc4", 1, 100)])
+check("squares", (ln["last"], ln["moves"][0]["squares"]), (["e7", "e5"], ["g1", "f3"]))
+check("Stockfish's move never played", (ln["best"]["san"], ln["best"]["squares"], ln["best"]["n"], ln["best"]["p"]),
+      ("d4", ["d2", "d4"], 0, None))
+check("eval from the player's side", core.line(rep, {core.key(pos): {"cp": 40, "best": "d4"}}, "black", ["e4", "e5"],
+                                              "2026-01-01")["best"]["cp"], -40)
+try:
+    core.line(rep, {}, "white", ["e4", "e4"], "2026-01-01")
+    check("illegal line refused", False, True)
+except ValueError:
+    check("illegal line refused", True, True)
+
 progress.QUIET = True
 out = io.StringIO()
 bar = progress.Bar("Analizando", 8, stream=out)

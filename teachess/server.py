@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import errno
 import json
+import urllib.parse
 import threading
 import time
 import webbrowser
@@ -109,6 +110,11 @@ class Store:
                 }
             return self._insights
 
+    def line(self, color: str, sans: list[str]) -> dict:
+        with self.lock:
+            games = [g for g in self.games if self.at is None or core.end_dt(g) <= self.at]
+            return core.line(games, self.evals, color, sans, self.report.get("since", core.window_since()))
+
     def drill(self) -> dict:
         with self.lock:
             due, stats = drills.queue(self.report)
@@ -199,6 +205,15 @@ def make_handler(store: Store):
                 self.send_json(store.insights())
             elif path == "/api/drill":
                 self.send_json(store.drill())
+            elif path == "/api/line":
+                q = urllib.parse.parse_qs(self.path.partition("?")[2])
+                color, sans = q.get("color", [""])[0], q.get("moves", [""])[0].split()
+                if color not in ("white", "black") or len(sans) > 20 or any(len(s) > 10 for s in sans):
+                    return self.send_json({"error": "bad request"}, 400)
+                try:
+                    self.send_json(store.line(color, sans))
+                except ValueError:
+                    self.send_json({"error": "illegal line"}, 400)
             elif path == "/api/ai":
                 from . import mcp
                 self.send_json(mcp.status())

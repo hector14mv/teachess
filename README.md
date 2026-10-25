@@ -163,7 +163,8 @@ when it finishes.
 
 ![Rhythm tab](docs/screenshots/ritmo.png)
 
-`teachess dash --at 2026-10-15T02:47` replays a past moment offline, which is how these screenshots were taken.
+`teachess dash --offline` shows the dashboard without asking chess.com, which is how these screenshots were taken;
+`teachess dash --at 2026-10-15T02:47` replays a past moment.
 
 ## Settings
 

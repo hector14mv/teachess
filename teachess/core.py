@@ -704,6 +704,8 @@ def line(games: list[dict], evals: dict, color: str, sans: list[str], since: str
     last = None
     for san in sans:
         move = board.parse_san(san)
+        if not move:  # "--", a null move, parses but is no move
+            raise ValueError(f"not a move: {san}")
         last = [chess.square_name(move.from_square), chess.square_name(move.to_square)]
         board.push(move)
 

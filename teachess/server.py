@@ -112,8 +112,8 @@ class Store:
 
     def line(self, color: str, sans: list[str]) -> dict:
         with self.lock:
-            games = [g for g in self.games if self.at is None or core.end_dt(g) <= self.at]
-            return core.line(games, self.evals, color, sans, self.report.get("since", core.window_since()))
+            # Every game, as in the report's tree it sits on (a replay with --at shows that tree whole too)
+            return core.line(self.games, self.evals, color, sans, self.report.get("since", core.window_since()))
 
     def drill(self) -> dict:
         with self.lock:

@@ -203,6 +203,11 @@ try:
     check("illegal line refused", False, True)
 except ValueError:
     check("illegal line refused", True, True)
+try:
+    core.line(rep, {}, "white", ["--"], "2026-01-01")
+    check("a null move is no move", False, True)
+except ValueError:
+    check("a null move is no move", True, True)
 
 progress.QUIET = True
 out = io.StringIO()

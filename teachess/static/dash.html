@@ -153,7 +153,7 @@ const GLYPH = { k: '♚', q: '♛', r: '♜', b: '♝', n: '♞', p: '♟' };
 
 const S = {
   tab: TABS.some(t => t[0] === location.hash.slice(1)) ? location.hash.slice(1) : 'ahora',
-  state: null, insights: null, version: null, drill: null, answer: null, picked: null, ai: null, copied: null, connecting: null, lines: {},
+  state: null, insights: null, version: null, drill: null, answer: null, picked: null, ai: null, copied: null, connecting: null, lines: {}, lineGen: 0,
   side: 'white', path: null, branch: null, dismissed: false, lastSeen: null, toast: null, lastJson: ''
 };
 
@@ -175,7 +175,7 @@ async function load() {
     S.state = st;
     if (st.version !== S.version) {
       S.insights = await j('/api/insights');
-      S.lines = {};
+      S.lines = {}; S.lineGen++;
       S.version = st.version;
       if (!S.answer) S.drill = S.tab === 'errores' ? await j('/api/drill') : null;  // a card from the old report is gone
     }
@@ -332,8 +332,9 @@ function getLine(side, path) {
   const k = `${side}|${path.join(' ')}`;
   if (!(k in S.lines)) {
     S.lines[k] = null;
+    const gen = S.lineGen;  // an answer about an older report must not land in the new cache
     j(`/api/line?color=${side}&moves=${encodeURIComponent(path.join(' '))}`)
-      .then(d => { S.lines[k] = d; }, () => { S.lines[k] = { error: true }; })
+      .then(d => { if (gen === S.lineGen) S.lines[k] = d; }, () => { if (gen === S.lineGen) S.lines[k] = { error: true }; })
       .then(() => { if (S.tab === 'repertorio') render(); });
   }
   return S.lines[k];
@@ -385,9 +386,14 @@ function viewRep() {
   const board = ready ? boardHtml(ln.fen, side === 'black', ln.last || [], arrowsSvg(arrows, side === 'black'))
     : `<div class="board" style="aspect-ratio:1;background:var(--card)"></div>`;
 
+  const missing = best && !kids.some(k => k.s === best.san) ? `<div class="leaf"><div class="branch ghost-branch">
+      <span class="san" style="color:var(--live)">${esc(label(best.san))}</span>
+      <span style="font-size:13px;color:#B8C4BD;min-width:0">La que elige Stockfish (${fmtEval(best.cp)}). ${best.n ? `Solo la has jugado ${best.n} ${best.n === 1 ? 'vez' : 'veces'}.` : 'No la juegas nunca.'}</span>
+      <span class="pct" style="color:var(--live)">${best.p != null ? best.p + '%' : '—'}</span></div></div>` : '';
   if (!picked) return `<div class="row"><section style="flex:1 1 360px;min-width:0;max-width:460px">${board}</section>
     <section class="main-col card" style="padding:26px"><div class="path" style="margin-top:0">${crumbs}</div>
-    <p class="muted" style="margin-top:18px">Aquí se acaba lo analizado: menos de 4 partidas siguen por esta línea.</p></section></div>`;
+    <p class="muted" style="margin-top:18px">${L >= 10 ? 'Aquí se acaba el árbol: llega a las 5 primeras jugadas de cada bando.' : 'Aquí se acaba lo analizado: menos de 4 partidas siguen por esta línea.'}</p>
+    ${missing ? `<div class="branches tree">${missing}</div>` : ''}</section></div>`;
 
   const rows = kids.map(k => {
     const nm = names[[...path, k.s].join(' ')];
@@ -405,10 +411,6 @@ function viewRep() {
       </span>
       <span class="pct" style="color:${colorFor(k.p)}">${k.p}%</span></button>${sub}</div>`;
   }).join('');
-  const missing = best && !kids.some(k => k.s === best.san) ? `<div class="leaf"><div class="branch ghost-branch">
-      <span class="san" style="color:var(--live)">${esc(label(best.san))}</span>
-      <span style="font-size:13px;color:#B8C4BD;min-width:0">La que elige Stockfish (${fmtEval(best.cp)}). ${best.n ? `Solo la has jugado ${best.n} ${best.n === 1 ? 'vez' : 'veces'}.` : 'No la juegas nunca.'}</span>
-      <span class="pct" style="color:var(--live)">${best.p != null ? best.p + '%' : '—'}</span></div></div>` : '';
 
   let title, body = `Un ${pct(picked.p)} % de los puntos en ${picked.n} partidas.`;
   if (!mine) title = 'Respuesta de tu rival';

@@ -114,12 +114,15 @@ def sync(user: str | None = None, log=print, analyse: bool = True, since_month: 
     """Fetch the current month (and any month not cached yet), merge new games, evaluate them move by
     move and rebuild the report (analyse=False stops after the merge). Returns the new games, oldest first.
 
-    since_month ("YYYY-MM") leaves older months for a later sync: setup downloads only the window it needs.
-    show draws a progress bar over the months to download."""
+    since_month ("YYYY-MM") leaves older months alone: setup downloads only the window it needs, and once a window
+    is chosen every sync keeps to it (the watcher never pulls years of history nobody analyses). show draws a
+    progress bar over the months to download."""
     try:
         user = user or config.chess_user()
     except SystemExit as e:  # config.py is shared with the root scripts, which exit on a missing user
         raise SetupError(str(e.code)) from None
+    if since_month is None and config.load().get("analysis"):
+        since_month = window_since()[:7]
     with _lock:
         claim_folder(user)
         fetch_games.RAW.mkdir(parents=True, exist_ok=True)

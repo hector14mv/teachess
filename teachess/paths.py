@@ -19,7 +19,8 @@ from pathlib import Path
 
 def _home() -> Path:
     if os.environ.get("TEACHESS_HOME"):
-        return Path(os.environ["TEACHESS_HOME"]).expanduser()
+        # absolute, so a LaunchAgent or an MCP client started elsewhere finds the same folder
+        return Path(os.environ["TEACHESS_HOME"]).expanduser().resolve()
     if sys.platform == "darwin":
         return Path.home() / "Library" / "Application Support" / "teachess"
     return Path(os.environ.get("XDG_DATA_HOME") or Path.home() / ".local" / "share") / "teachess"

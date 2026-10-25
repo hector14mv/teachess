@@ -304,7 +304,8 @@ def run(window: str | None = None, time_class: str | None = None, interactive: b
         raise SetupError("No hay partidas en tu archivo de chess.com.")
     if window is None:
         log("Midiendo lo que tardaría Stockfish en tu ordenador…")
-    o = options(games, time_class, measure=window is None, s=s)
+    # A window given up front needs no estimates of the others (and no requests for them)
+    o = options(games, time_class, measure=window is None, s=s if window is None else None)
     if not window:
         window = ask(o) if interactive and o["ask"] else o["recommended"]
     if s["totals"] and month(window) < covered(s):  # an older window: download just what it reaches

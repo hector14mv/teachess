@@ -41,9 +41,11 @@ class Store:
                 self.games = core.load_games()
                 self.report = core.load_report()
                 self.evals = core.load_evals()
-                self.version = self.stamp()
-                if self.version == before:
+                after = self.stamp()
+                if after == before:
                     break
+            # Still moving after three reads: keep the older stamp, so the next poll sees a change and reads again
+            self.version = before
             self._reviews.clear()
             self._insights = None
 

@@ -8,6 +8,7 @@ from __future__ import annotations
 
 import contextlib
 import fcntl
+import io
 import json
 import os
 import shutil
@@ -268,7 +269,7 @@ def drop_from_position() -> int:
 
 def rebuild_report(show: bool = False) -> None:
     build_report.SINCE, build_report.TIME_CLASS = window_since(), tc()
-    with data_lock():
+    with data_lock(), contextlib.redirect_stdout(io.StringIO()):  # its summary line is for the script, not you
         build_report.main()
     deepen_report(show)
 
